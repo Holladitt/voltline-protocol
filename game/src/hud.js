@@ -12,9 +12,10 @@ const last = {}; // cache nilai terakhir per kunci
 function setText(id, v) {
   if (last[id] !== v) { last[id] = v; const el = $(id); if (el) el.textContent = v; }
 }
+const SHOW_DISPLAY = { kitBadge: 'inline' }; // span inline di baris UANG — 'block' akan pindah baris
 function show(id, on) {
   const k = id + ':show';
-  if (last[k] !== on) { last[k] = on; const el = $(id); if (el) el.style.display = on ? '' : 'none'; }
+  if (last[k] !== on) { last[k] = on; const el = $(id); if (el) el.style.display = on ? (SHOW_DISPLAY[id] || 'block') : 'none'; }
 }
 function fmtTime(t) {
   t = Math.max(0, Math.ceil(t));
