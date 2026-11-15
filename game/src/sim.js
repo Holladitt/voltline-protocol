@@ -1,8 +1,5 @@
 // VOLTLINE PROTOCOL — sim.js
-// Fixed-step heart: 60 ticks/second, 16.67 ms steps, accumulator, max 5
-// steps/frame (leftover discarded). Fixed order each tick:
-// input -> player -> bots -> weapons/grenades -> bomb -> round end.
-// The sim only writes state; render & HUD read it.
+// Fixed-step heart: 60 ticks/s, 16.67 ms steps, accumulator, max 5 steps/frame.
 import { CFG } from './config.js';
 import { tickPlayer, tickInteract } from './player.js';
 import { tickBot, tickBotHoldCheck, botHear, spawnBots, botBuy } from './bots.js';
@@ -94,7 +91,7 @@ export function tick(s, cmd, dt) {
   // 6. Bomb & round end.
   tickRound(s, dt);
 
-  // Spectate: when the player dies, follow the living friendly bot with the highest HP.
+  // Spectate: follow the living friendly bot with highest HP.
   if (!p.alive && s.phase === 'live') {
     if (p.spectate < 0 || !s.bots[p.spectate] || !s.bots[p.spectate].alive) {
       let best = -1, bh = -1;

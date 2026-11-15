@@ -17,7 +17,7 @@ export function spreadDeg(w, moveMag, crouch, settleT, bloom) {
   return sp + bloom;
 }
 
-// Fire direction from yaw/pitch + random deviation inside the spread cone (degrees).
+// Fire direction from yaw/pitch + deviation in spread cone.
 // Writes to out {x,y,z} — no allocation.
 export function aimDir(yaw, pitch, spread, out) {
   const a = (Math.random() - 0.5) * 2 * spread * D2R;
@@ -82,7 +82,7 @@ export function firePlayer(s, now) {
   return 'shot';
 }
 
-// One bot shot at a target (player or bot). Accuracy = difficulty x range x movement.
+// One bot shot. Accuracy = difficulty x range x movement.
 // Bots aim with angular error; the raycast decides hit or miss — no wallhack.
 export function fireBot(s, b, target, now) {
   const ws = b.weapon;
@@ -97,7 +97,7 @@ export function fireBot(s, b, target, now) {
   let acc = d.acc * Math.max(0.15, 1 - 0.12 * Math.max(0, (dist - 15) / 10));
   if (b.moving) acc *= 0.82;
   const baseSpread = w.spread[0] * d.spread;
-  // Angular error: lower acc means bigger error. 1 sigma ~ (1-acc) * 2.2 degrees.
+  // Angular error: lower acc = bigger error. 1 sigma ~ (1-acc)*2.2 deg.
   const err = (1 - acc) * 2.4 + baseSpread;
   const eyeY = b.y + (b.crouch ? 1.12 : 1.55);
   const ty = target.y + (target.crouch ? 0.9 : 1.35);

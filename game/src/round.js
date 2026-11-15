@@ -82,7 +82,7 @@ export function tickRound(s, dt) {
     const atkAlive = aliveCount(s, atkTeam), defAlive = aliveCount(s, defTeam);
     if (b.state === 'planted') {
       if (defAlive === 0) return endRound(s, atkTeam, 'DEFENDERS ELIMINATED — BOMB DETONATES');
-      // Attackers eliminated but bomb planted: defenders must defuse before the timer.
+      // Attackers out but bomb planted: defenders must defuse in time.
     } else {
       if (atkAlive === 0) return endRound(s, defTeam, 'ATTACKERS ELIMINATED');
       if (defAlive === 0) return endRound(s, atkTeam, 'DEFENDERS ELIMINATED');

@@ -1,7 +1,5 @@
 // VOLTLINE PROTOCOL — bots.js: 4v4 AI (patrol/hold/engage/retreat/plant/
-// defuse/buy), roles per round, vision 100°/70°, sight 40 m open / 25 m
-// corridor, 2.5 s memory, NO wallhack: LOS by raycast, sound ±30° + range,
-// smoke blocks shooting. Friendlies hold fire 0.5 s, stop after 2 player hits.
+// defuse/buy). Vision 100°/70°, sight 40 m / 25 m, 2.5 s memory, NO wallhack.
 import { CFG } from './config.js';
 import { findRoute, WP, hasLOS, collides, clearLine, inSite, siteOf, distToSite } from './map.js';
 import { fireBot, startReloadBot, tickReload, giveBotWeapon } from './weapons.js';
@@ -90,7 +88,7 @@ function canSee(s, b, tx, ty, tz) {
   return true;
 }
 
-// A bot hears a sound: only rough direction ±30° + range band. Stored as a hear target.
+// A bot hears a sound: rough direction ±30° + range band.
 export function botHear(s, b, x, z, radius, kind) {
   const d = Math.hypot(x - b.x, z - b.z);
   if (d > radius) return;
@@ -104,7 +102,7 @@ export function botHear(s, b, x, z, radius, kind) {
   if (kind === 'shot') b.hearConf = 2;
 }
 
-// Find a visible target: the player first (when an enemy), then the nearest enemy bot.
+// Find a visible target: player first, then nearest enemy bot.
 function scanTargets(s, b) {
   const p = s.player;
   const foes = [];
@@ -150,7 +148,7 @@ function turnToward(yaw, target, maxStep) {
 
 // Follow the live route; true on reaching (destX, destZ). Waypoints are only
 // the middle of the trip — the bot then walks the final leg itself. A route
-// with exhausted waypoints is NOT arrival; a final leg with no clear line is blocked.
+// with exhausted waypoints is NOT arrival; no clear line = blocked.
 function followRoute(s, b, speed, dt) {
   if (b.routeState === 'done') return true;
   if (b.routeState !== 'go') return false;
@@ -278,7 +276,7 @@ export function tickBot(s, b, dt) {
         if (b.burstPause > 0) b.burstPause -= dt;
         else {
           if (b.burstLeft <= 0) b.burstLeft = Math.floor(rand(d.burst[0], d.burst[1] + 1));
-          // Friendly: hold fire 0.5 s if the player aims at the same target (<20 m); stop after 2 player hits.
+          // Friendly: hold fire 0.5 s if the player aims at the same target.
           let holdFire = false;
           if (b.team === 'you' && s.player.alive) {
             const pd = Math.hypot(tgt.x - s.player.x, tgt.z - s.player.z);
@@ -315,7 +313,7 @@ export function tickBot(s, b, dt) {
       else {
         const ri = b.routeI;
         const done = followRoute(s, b, b.role === 'lurker' ? 4.2 : 5.5, dt);
-        // At an intermediate node: sometimes wait 1.5-2.5 s (v1 ran this every tick — bots crawled).
+        // At an intermediate node: sometimes wait 1.5-2.5 s.
         if (!done && b.routeI > ri && Math.random() < 0.3) b.waitT = rand(1.5, 2.5);
       }
       if (b.seenT > 0) b.state = 'engage';
@@ -334,7 +332,7 @@ export function tickBot(s, b, dt) {
     }
   }
 
-  // 4. Plant/defuse from patrol when conditions fit (also in round.js; runs in menu demo too).
+  // 4. Plant/defuse from patrol when conditions fit.
   if (b.state === 'patrol' && (s.phase === 'live' || s.phase === 'menu')) {
     const site = siteOf(b.x, b.z);
     if (isAtkTeam && site >= 0 && s.bomb.state === 'carried' && s.bomb.carrier === b.id) {
@@ -386,7 +384,7 @@ function decideMove(s, b, isAtkTeam) {
   }
   if (isAtkTeam) {
     const site = pickSite(s, b);
-    // Fake: after 20 s without contact, two bots rotate to the other site (once per round).
+    // Fake: after 20 s without contact, two bots rotate site (once/round).
     let target = site;
     if (s.time > 20 && !s._fakeDone && (b.role === 'lurker' || b.role === 'flex')) {
       target = 1 - site; s._fakeDone = true;

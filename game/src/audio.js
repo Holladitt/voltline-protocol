@@ -60,7 +60,7 @@ function panFor(x, z, px, pz, yaw) {
   return Math.max(-0.9, Math.min(0.9, rx / 12));
 }
 
-// Sound signature per weapon (audible range: rifle 35 m, pistol/SMG 25 m, sniper 45 m).
+// Sound signature per weapon (rifle 35 m, pistol/SMG 25 m, sniper 45 m).
 const SHOT_SIG = {
   percik: () => { burst(0.09, 'highpass', 1800, 0.5); burst(0.05, 'lowpass', 400, 0.3); },
   petir9: () => { burst(0.16, 'lowpass', 900, 0.8); burst(0.02, 'highpass', 2500, 0.6); tone(70, 0.08, 'sine', 0.5); },

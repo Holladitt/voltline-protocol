@@ -160,7 +160,7 @@ export function updateHUD(s, dt) {
   setText('teamYou', TEAM_SHORT.def + ' · ' + teamAlive(s, 'you'));
   setText('teamFoe', TEAM_SHORT.atk + ' · ' + teamAlive(s, 'foe'));
 
-  // --- Crosshair: gap widens while moving/shooting, narrows while crouching/still ---
+  // Crosshair: gap widens moving/shooting, narrows crouching/still.
   const w2 = curWeapon(s);
   const spread = w2 ? (p.moveMag > 0.5 ? 14 : p.crouch ? 5 : 8) + (w2.spreadBloom || 0) * 6 : 8;
   const ch = $('crosshair');
@@ -301,7 +301,7 @@ function updatePilotHUD(s) {
   const spread = w ? (b.moving ? 14 : b.crouch ? 5 : 8) + (w.spreadBloom || 0) * 6 : 8;
   const ch = $('crosshair');
   if (ch) ch.style.setProperty('--gap', Math.round(spread) + 'px');
-  // Player-only overlays stay hidden during the demo; no buymenu or roundend in menu phase.
+  // Player overlays hidden in demo; no buymenu/roundend in menu.
   show('hitmark', false);
   show('scope', false);
   show('spectate', false);

@@ -77,7 +77,7 @@ export function applyFlash(s, x, y, z) {
 // Does segment (x1,y1,z1)-(x2,y2,z2) pass through active smoke? (blocks vision)
 export function segmentInSmoke(s, x1, y1, z1, x2, y2, z2) {
   for (const sm of s.smokes) {
-    // Distance from segment sample points to the smoke center (8 samples, no allocation).
+    // Distance from segment samples to smoke center (8 samples).
     for (let i = 0; i <= 8; i++) {
       const t = i / 8;
       const px = x1 + (x2 - x1) * t, py = y1 + (y2 - y1) * t, pz = z1 + (z2 - z1) * t;

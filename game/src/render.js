@@ -1,5 +1,5 @@
 // VOLTLINE PROTOCOL — render.js: three.js scene from state (read-only).
-// Low-poly night-blue + volt-yellow map; voxel bots, viewmodels, tracer/
+// Low-poly scrapyard + volt-yellow map; voxel bots, viewmodels, tracer/
 // muzzle/smoke/explosion from fixed pools (<400 meshes, 60 fps). Never writes state.
 import * as THREE from 'three';
 import { CFG, SITE_NAMES } from './config.js';
@@ -36,6 +36,11 @@ function box(w, h, d, material) {
   m.castShadow = false; m.receiveShadow = false;
   return m;
 }
+function cyl(r, h, material) {
+  const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, 10), material);
+  m.castShadow = false; m.receiveShadow = false;
+  return m;
+}
 function boardTexture(text, sub, color) {
   const cv = document.createElement('canvas'); cv.width = 1024; cv.height = 256;
   const c = cv.getContext('2d');
@@ -50,7 +55,7 @@ function boardTexture(text, sub, color) {
   return t;
 }
 
-// Series-code stencil on crates/containers: volt-yellow text on a transparent canvas.
+// Series-code stencil on crates: volt-yellow text, transparent canvas.
 const STENCIL_TEX = {};
 function stencilTexture(code) {
   if (STENCIL_TEX[code]) return STENCIL_TEX[code];
@@ -109,31 +114,24 @@ function surfaceTexture(base, seam, speck, step) {
   return { map, bump };
 }
 
-// Main map PBR materials (replacing Lambert): concrete floor, concrete wall, metal-plate cover.
+// Main map PBR materials: concrete floor, concrete wall.
 const PBR = {};
 function pbrMat(kind) {
   if (PBR[kind]) return PBR[kind];
   let t, m;
   if (kind === 'floor') {
-    t = surfaceTexture('#46536e', '#232c48', 'rgba(255,255,255,0.06)', 64);
+    t = surfaceTexture('#6b5636', '#4a3a26', 'rgba(0,0,0,0.15)', 48);
     t.map.repeat.set(8, 6); t.bump.repeat.set(8, 6);
     m = new THREE.MeshStandardMaterial({
       map: t.map, bumpMap: t.bump, bumpScale: 0.6,
       roughness: 0.9, metalness: 0.05,
     });
   } else if (kind === 'wall') {
-    t = surfaceTexture('#5a6a8c', '#39456a', 'rgba(255,255,255,0.05)', 85);
+    t = surfaceTexture('#5f6b62', '#454a42', 'rgba(255,255,255,0.05)', 85);
     t.map.repeat.set(3, 2); t.bump.repeat.set(3, 2);
     m = new THREE.MeshStandardMaterial({
       map: t.map, bumpMap: t.bump, bumpScale: 0.5,
       roughness: 0.85, metalness: 0.05,
-    });
-  } else { // cover: plat logam sirkuit
-    t = surfaceTexture('#55648a', '#2c3854', 'rgba(255,210,26,0.10)', 128);
-    t.map.repeat.set(2, 2); t.bump.repeat.set(2, 2);
-    m = new THREE.MeshStandardMaterial({
-      map: t.map, bumpMap: t.bump, bumpScale: 0.4,
-      roughness: 0.5, metalness: 0.35,
     });
   }
   PBR[kind] = m;
@@ -157,12 +155,12 @@ export function initRender(canvas) {
     renderer.setSize(window.innerWidth, window.innerHeight);
   });
 
-  // Procedural skybox: gradient + sun (no external assets).
+  // Procedural skybox: gradient + sun.
   const sky = new THREE.Mesh(new THREE.SphereGeometry(190, 24, 16),
     new THREE.MeshBasicMaterial({ map: skyTexture(), side: THREE.BackSide, fog: false }));
   scene.add(sky);
 
-  // Golden-hour sun + ambient/hemisphere; sharp shadows, volt-yellow accents.
+  // Golden-hour sun + ambient; sharp shadows.
   const sun = new THREE.DirectionalLight(0xffe9b0, 2.6);
   sun.position.set(-30, 40, -20);
   sun.castShadow = true;
@@ -185,19 +183,19 @@ export function initRender(canvas) {
 function buildMap() {
   mapGroup = new THREE.Group();
   scene.add(mapGroup);
-  // Floor: PBR night-blue concrete + thin yellow circuit lines.
+  // Floor: dirt + thin yellow circuit lines.
   const floor = new THREE.Mesh(new THREE.PlaneGeometry(66, 46), pbrMat('floor'));
   floor.rotation.x = -Math.PI / 2; floor.position.set(0, 0, 0);
   floor.receiveShadow = true;
   mapGroup.add(floor);
-  // Yellow circuit lines on the floor (thin emissive strips).
+  // Yellow circuit lines on the floor.
   const stripMat = new THREE.MeshBasicMaterial({ color: 0xffd21a });
   for (const [x, z, w, d] of [[0, 0, 60, 0.12], [0, -14, 44, 0.12], [0, 14, 44, 0.12], [-20, -7, 0.12, 14], [20, -7, 0.12, 14], [1, -5.75, 4, 0.12], [-12, -2.25, 0.12, 5], [-20, -11, 8, 0.12], [19, -11, 6, 0.12], [-1, 7.8, 4, 0.12], [13.3, 2.25, 0.12, 5]]) {
     const s = new THREE.Mesh(new THREE.PlaneGeometry(w, d), stripMat);
     s.rotation.x = -Math.PI / 2; s.position.set(x, 0.02, z);
     mapGroup.add(s);
   }
-  // Glass floor zones: semi-transparent panels + glowing cables underneath.
+  // Glass floor zones: panels + glowing cables underneath.
   for (const g of GLASS_ZONES) {
     const w = g.x1 - g.x0, d = g.z1 - g.z0;
     const under = new THREE.Mesh(new THREE.PlaneGeometry(w, d), new THREE.MeshBasicMaterial({ color: 0x061020 }));
@@ -214,11 +212,13 @@ function buildMap() {
     glass.rotation.x = -Math.PI / 2; glass.position.set((g.x0 + g.x1) / 2, 0.03, (g.z0 + g.z1) / 2);
     mapGroup.add(glass);
   }
-  // Map boxes: PBR concrete walls, PBR metal-plate cover; cast + receive shadows.
+  // Map boxes: PBR walls, rusted cover in varied colours (RUST cycles).
+  const RUST = [0x8a3b26, 0x3a5a78, 0xa8875a, 0x6e4a2f];
+  let ci = 0;
   for (const b of BOXES) {
     const w = b.x1 - b.x0, d = b.z1 - b.z0;
     const isWall = b.h >= 3;
-    const m = box(w, b.h, d, isWall ? pbrMat('wall') : pbrMat('cover'));
+    const m = box(w, b.h, d, isWall ? pbrMat('wall') : mat(RUST[ci++ % 4]));
     m.position.set((b.x0 + b.x1) / 2, b.h / 2, (b.z0 + b.z1) / 2);
     m.castShadow = true; m.receiveShadow = true;
     mapGroup.add(m);
@@ -243,8 +243,7 @@ function buildMap() {
     light.position.set(st.cx, 3, st.cz);
     scene.add(light); siteLights.push(light);
   });
-  // Series-code stencils on the vertical side of crates/containers at eye level
-  // (diegetic texture). Face: S = +z, N = -z, E = +x, W = -x.
+  // Stencils on crate sides at eye level. Face: S=+z, N=-z, E=+x, W=-x.
   const STENCILS = [[15, 'IC-04', 'S'], [16, 'SEC-9', 'E'], [17, 'VOLT-7', 'W'], [20, 'RLY-2', 'S'], [22, 'KBL-11', 'S'], [24, 'GRD-5', 'N'], [27, 'CVR-1', 'S'], [28, 'CVR-2', 'N'], [29, 'CVR-3', 'E'], [30, 'CVR-4', 'W'], [0, 'VOLT-1', 'S'], [1, 'VOLT-2', 'N']];
   for (const [bi, code, face] of STENCILS) {
     const b = BOXES[bi];
@@ -258,31 +257,54 @@ function buildMap() {
     else { st.rotation.y = -Math.PI / 2; st.position.set(b.x0 - 0.02, y, (b.z0 + b.z1) / 2); }
     mapGroup.add(st);
   }
-  // Floor debris: small visual-only crates tucked in corners (no collision).
-  for (const [x, z, s] of [[-31, 20, 0.7], [31, -20, 0.6], [-31, -20, 0.6], [31, 20, 0.7], [-31, 8, 0.5], [31, -8, 0.5]]) {
-    const d = box(s, s * 0.6, s, mat(0x2a3348)); d.position.set(x, s * 0.3, z); d.rotation.y = 0.5; mapGroup.add(d);
+  // Floor debris: scrap crates + rust piles, corners (no collision).
+  for (const [x, z, s, c] of [[-31, 20, 0.7, 0x8a3b26], [31, -20, 0.6, 0x3a5a78], [-31, -20, 0.6, 0x6e4a2f], [31, 20, 0.7, 0xa8875a], [-31, 8, 0.5, 0x8a3b26], [31, -8, 0.5, 0x6e4a2f], [-26, -19, 0.9, 0x3a5a78], [26, 19, 0.9, 0x8a3b26], [-8, 19, 0.8, 0xa8875a], [8, -19, 0.8, 0x6e4a2f]]) {
+    const d = box(s, s * 0.6, s, mat(c)); d.position.set(x, s * 0.3, z); d.rotation.y = 0.5; mapGroup.add(d);
   }
-  // Wall lamps: warm glow strips on the north/south outer walls.
+  // Tire stacks: flat dark cylinders, visual-only.
+  for (const [x, z, n] of [[-28, 17, 3], [28, -17, 3], [-24, 11, 2], [24, -11, 2], [-5, -19, 4], [5, 19, 4]]) {
+    for (let i = 0; i < n; i++) {
+      const t = cyl(0.42, 0.18, mat(0x1a1a1a)); t.position.set(x, 0.09 + i * 0.18, z); mapGroup.add(t);
+    }
+  }
+  // Barrels: rust-red / dull-blue drums, visual-only.
+  for (const [x, z, c] of [[-27, -6, 0x8a3b26], [-27, -5, 0x3a5a78], [27, 6, 0x3a5a78], [27, 7, 0x8a3b26], [-4, 20, 0x8a3b26], [4, -20, 0x3a5a78], [22, 12, 0x8a3b26], [-22, -12, 0x3a5a78]]) {
+    const b = cyl(0.34, 0.9, mat(c)); b.position.set(x, 0.45, z); mapGroup.add(b);
+  }
+  // Wrecked-car cabs: small humps on the three v1.5.5 wreck boxes (31-33).
+  for (const bi of [31, 32, 33]) {
+    const b = BOXES[bi];
+    const cab = box(1.1, 0.55, 1.0, mat(0x4a3428));
+    cab.position.set((b.x0 + b.x1) / 2, b.h + 0.27, (b.z0 + b.z1) / 2);
+    cab.rotation.y = 0.3; mapGroup.add(cab);
+  }
+  // Wall lamps: warm glow strips on north/south walls.
   for (const [x, z] of [[-20, -21.9], [0, -21.9], [20, -21.9], [-20, 21.9], [0, 21.9], [20, 21.9]]) {
     const l = box(0.5, 0.25, 0.08, new THREE.MeshBasicMaterial({ color: 0xfff2b0 })); l.position.set(x, 2.8, z); mapGroup.add(l);
   }
-  // Central relay pillar (small glowing tower).
+  // Central relay pillar.
   const tower = box(0.5, 6, 0.5, new THREE.MeshBasicMaterial({ color: 0xffd21a }));
   tower.position.set(0, 3, 0);
   mapGroup.add(tower);
-  // Steel gantry beams spanning the arena above the walls (visual depth).
+  // Steel gantry beams above the walls.
   const gantryMat = new THREE.MeshStandardMaterial({ color: 0x3a4a5a, roughness: 0.4, metalness: 0.6 });
   for (const gz of [-7, 7]) {
     const beam = box(64, 0.4, 0.6, gantryMat);
     beam.position.set(0, 5.5, gz);
     mapGroup.add(beam);
   }
+  // Scrapyard backdrop: silos + shed, outside walls.
+  for (const [x, z] of [[-15, -28], [12, -28]]) {
+    const s = cyl(2.5, 12, mat(0x8a8578)); s.position.set(x, 6, z); mapGroup.add(s);
+  }
+  const shed = box(16, 5, 8, mat(0x5f6b62)); shed.position.set(18, 2.5, 29); mapGroup.add(shed);
+  const shedRoof = box(17, 0.3, 9, mat(0x6e4a2f)); shedRoof.position.set(18, 5.1, 29); mapGroup.add(shedRoof);
 }
 
 // --- Voxel bot: big head (headshot target), visor, glowing back line ---
 function buildBotMesh(team) {
   const g = new THREE.Group();
-  // Friendly blue deepened (0x2b8fd9) so it stays readable in the bright daytime palette.
+  // Friendly blue deepened (0x2b8fd9) for bright daytime readability.
   const bodyC = team === 'you' ? 0x2b8fd9 : 0xff5a1a;
   const headC = team === 'you' ? 0xf5f5f0 : 0xff8a1e;
   const foe = team !== 'you';
@@ -322,7 +344,7 @@ function buildViewmodel() {
     stripe: box(0.115, 0.02, 0.3, new THREE.MeshBasicMaterial({ color: 0xffd21a })),
     // Tactical knife blade (slot 3): only visible in the melee slot.
     blade: box(0.02, 0.3, 0.07, mat(0xcfd8e8)),
-    // Voxel hands + forearms follow recoil, walk bob, reload dip. Below sight line.
+    // Voxel hands + forearms follow recoil, bob, reload dip.
     // Tactical gloves: dark + knuckle accents.
     handR: box(0.09, 0.09, 0.13, mat(0x1f2a3a)),
     knuckR: box(0.095, 0.02, 0.06, mat(0x0a0a0a)),
@@ -569,8 +591,8 @@ function updateViewmodel(s, dt, time) {
     }
   }
   const p = s.player;
-  // Sniper 4x zoom: viewmodel (hands included) hides behind the HUD scope overlay.
-  // Menu: shown from the pilot's POV; hidden only with no living pilot (orbit cam).
+  // Sniper 4x zoom: viewmodel hides behind HUD scope overlay.
+  // Menu: pilot POV; hidden only with no living pilot.
   viewmodel.visible = (s.phase !== 'menu' || (pilot && pilot.alive)) && !(p.ads && w && CFG.WEAPONS[w.id].scope === 4);
   // Recoil kick + reload dip + walk bob.
   const kick = w ? (w.spreadBloom || 0) * 0.06 : 0;

@@ -1,9 +1,6 @@
 // VOLTLINE PROTOCOL — map.js
-// GLASS CIRCUIT: 64x44 m energy-relay arena on a station roof. Three lanes:
-// Volt Corridor (mid, z~0, 44 m sightline), Panel Terrace (north, z~-14),
-// Cable Alley (south, z~+14). Site A NORTH RELAY (-20,-14), Site B
-// GLASS SUBSTATION (20,-14). All collisions are AABBs {x0,z0,x1,z1,h}.
-// Slab raycast and line-of-sight use the same box list.
+// GLASS CIRCUIT: 64x44 m arena. Site A NORTH RELAY (-20,-14), Site B
+// GLASS SUBSTATION (20,-14). Collisions are AABBs {x0,z0,x1,z1,h}.
 import { CFG } from './config.js';
 
 // Outer walls + lane dividers + cover. 14 hard corners, 11 covers (L1).
@@ -13,11 +10,11 @@ export const BOXES = [
   { x0: -33, z0: 22, x1: 33, z1: 23, h: 4 },   // south
   { x0: -33, z0: -22, x1: -32, z1: 22, h: 4 }, // west
   { x0: 32, z0: -22, x1: 33, z1: 22, h: 4 },   // east
-  // North divider (z=-10..-9): gaps at x -22..-14 and 6..14.
+  // North divider: gaps x -22..-14, 6..14.
   { x0: -32, z0: -10, x1: -22, z1: -9, h: 3 },
   { x0: -14, z0: -10, x1: 6, z1: -9, h: 3 },
   { x0: 14, z0: -10, x1: 32, z1: -9, h: 3 },
-  // South divider (z=9..10): gaps at x -18..-8 and 10..18.
+  // South divider: gaps x -18..-8, 10..18.
   { x0: -32, z0: 9, x1: -18, z1: 10, h: 3 },
   { x0: -8, z0: 9, x1: 10, z1: 10, h: 3 },
   { x0: 18, z0: 9, x1: 32, z1: 10, h: 3 },
@@ -30,7 +27,7 @@ export const BOXES = [
   { x0: -1.2, z0: -1.2, x1: 1.2, z1: 1.2, h: 3 },   // relay pillar (map center)
   { x0: -9, z0: 1.3, x1: -7, z1: 2.7, h: 1.1 },
   { x0: 7, z0: -2.7, x1: 9, z1: -1.3, h: 1.1 },
-  // Slanted solar panels, Site A (2.2-high cover).
+  // Solar panels, Site A.
   { x0: -25.5, z0: -17, x1: -22.5, z1: -16, h: 2.2 },
   { x0: -17.5, z0: -18, x1: -14.5, z1: -17, h: 2.2 },
   { x0: -21, z0: -10.5, x1: -19, z1: -9.5, h: 2.2 },
@@ -48,6 +45,10 @@ export const BOXES = [
   { x0: -2, z0: 6, x1: 0, z1: 7.5, h: 2 },
   { x0: -13, z0: -3, x1: -11, z1: -1.5, h: 2 },
   { x0: 11, z0: 1.5, x1: 13, z1: 3, h: 2 },
+  // v1.5.5 scrapyard wrecks: verified clear of waypoints/edges/holds/spawns.
+  { x0: 17, z0: 2.5, x1: 19.2, z1: 4.2, h: 1.1 },   // east-mid wreck
+  { x0: -19, z0: 7, x1: -16.8, z1: 8.7, h: 1.1 },   // south-west wreck
+  { x0: -4, z0: -6.5, x1: -1.8, z1: -4.8, h: 1.1 }, // north-mid wreck
 ];
 
 export const SITES = [
@@ -67,10 +68,8 @@ export const SPAWNS = {
 };
 
 // Waypoint graph for bots. Node: [x, z]. Edge: index pair.
-// RULE: an edge must NEVER cut through a wall — mid <-> north/south terrace
-// routes only pass through gaps (north: x -22..-14 & 6..14; south: x -18..-8 & 10..18).
-// WP4 (0,4): (0,0) is inside the relay pillar. WP18 (14,13) + WP22
-// (-12.5,5.5) nudged clear of cover boxes.
+// RULE: an edge must NEVER cut through a wall — mid <-> terrace routes
+// only pass through gaps (north: x -22..-14 & 6..14; south: x -18..-8 & 10..18).
 export const WP = [
   [-29, 0], [-24, 0], [-16, 0], [-8, 0], [0, 4], [8, 0], [16, 0], [24, 0], [29, 0],
   [-26, -14], [-20, -14], [-12, -14], [12, -14], [20, -14], [26, -14],
@@ -106,7 +105,7 @@ export function nearestWP(x, z) {
   return best;
 }
 
-// BFS waypoint route -> node list (without the start node). Preallocated: writes to out[].
+// BFS route -> node list (without start node). Preallocated.
 export function findRoute(from, to, out) {
   out.length = 0;
   if (from === to) return out;
@@ -140,8 +139,6 @@ export function collides(x, z, r, y) {
 
 // Straight-line clearance for a disc of radius r sliding from (x1,z1) to
 // (x2,z2) at foot height y. True when the swept disc never overlaps a box.
-// Each box is expanded by r and the segment is tested against it with a 2D
-// slab test; boxes too low to block (same rule as hitsBox) are skipped.
 export function clearLine(x1, z1, x2, z2, y, r) {
   const dx = x2 - x1, dz = z2 - z1;
   const len = Math.hypot(dx, dz);
