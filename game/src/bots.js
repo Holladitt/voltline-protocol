@@ -6,7 +6,7 @@
 // smoke fully blocks shooting. Friendly bots hold fire 0.5 s & stop after
 // 2 player hits on the same target.
 import { CFG } from './config.js';
-import { nearestWP, findRoute, WP, hasLOS, collides, inSite, siteOf, distToSite } from './map.js';
+import { findRoute, WP, hasLOS, collides, clearLine, inSite, siteOf, distToSite } from './map.js';
 import { fireBot, startReloadBot, tickReload, giveBotWeapon } from './weapons.js';
 import { throwGrenade, segmentInSmoke } from './grenades.js';
 import { emit, radio } from './state.js';
@@ -26,9 +26,11 @@ function pickSite(s, b) {
 function siteWP(site) { return site === 0 ? 10 : 13; }
 function holdSpot(b, site) {
   // Hold point near the site: anchor in cover, the rest at entrances.
+  // Site B anchor sits at (26,-11): the old (24,-11) is inside the
+  // substation crate's collision box, so a bot sent there can never arrive.
   const spots = site === 0
     ? [[-24, -11], [-16, -11], [-20, -18], [-26, -14], [-14, -17]]
-    : [[16, -11], [24, -11], [20, -18], [16, -17], [24, -17]];
+    : [[16, -11], [26, -11], [20, -18], [16, -17], [24, -17]];
   return spots[b.id % spots.length];
 }
 
@@ -43,6 +45,10 @@ export function spawnBots(s) {
     b.x = sp[0]; b.z = sp[1]; b.y = 0; b.vx = 0; b.vz = 0;
     b.yaw = isAtkTeam ? -Math.PI / 2 : Math.PI / 2;
     b.state = 'buy'; b.route.length = 0; b.routeI = 0; b.waitT = 0;
+    // Route state: 'go' (a live route), 'done' (destination reached),
+    // 'blocked' (no route / destination unreachable). 'blocked' means the
+    // next patrol tick picks a fresh destination via decideMove.
+    b.routeState = 'blocked'; b._stuckT = 0; b._lx = b.x; b._lz = b.z;
     b.target = -1; b.seenT = 0; b.hearT = 0;
   }
   // Roles are redrawn every round.
@@ -145,19 +151,70 @@ function turnToward(yaw, target, maxStep) {
   return yaw + Math.sign(d) * maxStep;
 }
 
-// Follow the waypoint route; true when the final destination is reached.
+// Follow the live route; true when the final destination is reached.
+// The waypoint list is only the middle of the trip: once it is exhausted
+// the bot walks the stored destination itself (the final leg). A route
+// whose waypoints are exhausted is NOT arrival — arrival is reaching
+// (destX, destZ). A final leg with no clear line is reported blocked,
+// never arrival.
 function followRoute(s, b, speed, dt) {
-  if (b.routeI >= b.route.length) return true;
-  const n = WP[b.route[b.routeI]];
-  if (moveToward(s, b, n[0], n[1], speed, dt)) b.routeI++;
-  return b.routeI >= b.route.length;
+  if (b.routeState === 'done') return true;
+  if (b.routeState !== 'go') return false;
+  if (b.routeI < b.route.length) {
+    const n = WP[b.route[b.routeI]];
+    if (moveToward(s, b, n[0], n[1], speed, dt)) b.routeI++;
+    return false;
+  }
+  // Final leg: walk the destination itself. Refuse a leg with no clear
+  // line instead of sliding along a wall forever.
+  if (!clearLine(b.x, b.z, b.destX, b.destZ, b.y, 0.38)) {
+    b.routeState = 'blocked';
+    b.vx = 0; b.vz = 0; b.moving = false;
+    return false;
+  }
+  if (moveToward(s, b, b.destX, b.destZ, speed, dt)) {
+    b.routeState = 'done';
+    return true;
+  }
+  return false;
 }
-function setRouteTo(s, b, tx, tz) {
-  const from = nearestWP(b.x, b.z), to = nearestWP(tx, tz);
-  findRoute(from, to, _route);
-  b.route = _route.slice();
-  b.routeI = 0;
+
+// Nearest waypoint the bot can actually stand on and walk to in a straight
+// line (not inside a box, with a clear line from the bot). -1 if none.
+function nearestOpenWP(x, z, y) {
+  let best = -1, bd = Infinity;
+  for (let i = 0; i < WP.length; i++) {
+    const wx = WP[i][0], wz = WP[i][1];
+    if (collides(wx, wz, 0.38, y)) continue;
+    if (!clearLine(x, z, wx, wz, y, 0.38)) continue;
+    const d = (wx - x) * (wx - x) + (wz - z) * (wz - z);
+    if (d < bd) { bd = d; best = i; }
+  }
+  return best;
+}
+
+// Plan a route to (tx, tz). Exported for the navigation regression tests.
+// Sets b.routeState to 'go' (live route) or 'blocked' (destination
+// unreachable). A destination inside a box, or with no waypoint path to it,
+// is 'blocked' — never silently treated as reached.
+export function setRouteTo(s, b, tx, tz) {
   b.destX = tx; b.destZ = tz;
+  b.route = []; b.routeI = 0; b.routeState = 'blocked';
+  // The destination itself must be standable.
+  if (collides(tx, tz, 0.38, b.y)) return;
+  // Straight shot: no waypoints needed when the direct line is clear.
+  // This also covers the same-waypoint case, where the BFS route is empty.
+  if (clearLine(b.x, b.z, tx, tz, b.y, 0.38)) { b.routeState = 'go'; return; }
+  // Otherwise route through the waypoint graph, starting from the nearest
+  // waypoint the bot can reach. BFS drops its start node, so the bot still
+  // has to stand on it first — prepend it.
+  const from = nearestOpenWP(b.x, b.z, b.y);
+  const to = nearestOpenWP(tx, tz, b.y);
+  if (from < 0 || to < 0) return;
+  findRoute(from, to, _route);
+  if (from !== to && _route.length === 0) return; // no graph path
+  b.route = [from, ..._route];
+  b.routeState = 'go';
 }
 
 // --- Main bot tick ---
@@ -261,8 +318,10 @@ export function tickBot(s, b, dt) {
       break;
     }
     default: { // patrol
-      // Pick a destination from role & bomb phase.
-      if (!b.route.length || b.routeI >= b.route.length) decideMove(s, b, isAtkTeam);
+      // Pick a destination from role & bomb phase. A new destination is
+      // only picked when no route is live — never re-planned every tick
+      // while the final leg is still running.
+      if (b.routeState !== 'go') decideMove(s, b, isAtkTeam);
       if (b.waitT > 0) { b.waitT -= dt; b.moving = false; }
       else {
         const ri = b.routeI;
@@ -277,16 +336,16 @@ export function tickBot(s, b, dt) {
     }
   }
 
-  // Anti-stuck: a patrolling bot that hasn't moved for 2.5 s despite having a route
-  // (waypoint line blocked by cover) skips that waypoint.
-  if (b.state === 'patrol' && b.waitT <= 0 && b.route.length > 0 &&
-      b.routeI < b.route.length) {
+  // Anti-stuck: a patrolling bot that hasn't moved for 2.5 s while a route is
+  // live gives up on that route. It never skips a waypoint (that can cut
+  // through cover); the next patrol tick picks a fresh destination instead.
+  // This also catches the final leg, where the route list is already empty.
+  if (b.state === 'patrol' && b.waitT <= 0 && b.routeState === 'go') {
     const moved = Math.hypot(b.x - (b._lx ?? b.x), b.z - (b._lz ?? b.z));
     b._stuckT = moved < 0.001 ? (b._stuckT || 0) + dt : 0;
     b._lx = b.x; b._lz = b.z;
     if ((b._stuckT || 0) > 2.5) {
-      b._stuckT = 0; b.routeI++;
-      if (b.routeI >= b.route.length) b.route.length = 0;
+      b._stuckT = 0; b.routeState = 'blocked';
     }
   }
 
@@ -355,7 +414,8 @@ function decideMove(s, b, isAtkTeam) {
     b._site = site;
   } else {
     // Defenders: 2-1-2 — two at A, one mid, two at B.
-    const spots = [[-20, -14], [-24, -11], [0, 4], [20, -14], [24, -11]];
+    // B anchor sits at (26,-11): the old (24,-11) is inside the Site B crate.
+    const spots = [[-20, -14], [-24, -11], [0, 4], [20, -14], [26, -11]];
     const sp = spots[b.id % 5];
     setRouteTo(s, b, sp[0], sp[1]);
     b.holdYaw = Math.atan2(-(0 - sp[0]), -(0 - sp[1]));
@@ -365,8 +425,9 @@ function decideMove(s, b, isAtkTeam) {
 function SITES_X(site) { return site === 0 ? -20 : 20; }
 
 // Once a defender reaches its hold point, switch to hold state.
+// A blocked route never counts as arrival, so it can never flip to hold.
 export function tickBotHoldCheck(s, b) {
-  if (b.state !== 'patrol' || !b._holdAt) return;
+  if (b.state !== 'patrol' || !b._holdAt || b.routeState === 'blocked') return;
   if (dist2(b.x, b.z, b._holdAt[0], b._holdAt[1]) < 1.5) {
     b.state = 'hold'; b.holdYaw = b.yaw; b._holdAt = null;
   }

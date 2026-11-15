@@ -137,6 +137,40 @@ export function collides(x, z, r, y) {
   return false;
 }
 
+// Straight-line clearance for a disc of radius r sliding from (x1,z1) to
+// (x2,z2) at foot height y. True when the swept disc never overlaps a box.
+// Each box is expanded by r and the segment is tested against it with a 2D
+// slab test; boxes too low to block (same rule as hitsBox) are skipped.
+export function clearLine(x1, z1, x2, z2, y, r) {
+  const dx = x2 - x1, dz = z2 - z1;
+  const len = Math.hypot(dx, dz);
+  if (len < 1e-6) return !collides(x1, z1, r, y);
+  for (let i = 0; i < BOXES.length; i++) {
+    const b = BOXES[i];
+    if (y >= b.h - 0.05) continue;
+    const bx0 = b.x0 - r, bx1 = b.x1 + r, bz0 = b.z0 - r, bz1 = b.z1 + r;
+    let t0 = 0, t1 = 1;
+    if (Math.abs(dx) < 1e-9) { if (x1 < bx0 || x1 > bx1) continue; }
+    else {
+      let ta = (bx0 - x1) / dx, tb = (bx1 - x1) / dx;
+      if (ta > tb) { const t = ta; ta = tb; tb = t; }
+      if (ta > t0) t0 = ta;
+      if (tb < t1) t1 = tb;
+      if (t0 > t1) continue;
+    }
+    if (Math.abs(dz) < 1e-9) { if (z1 < bz0 || z1 > bz1) continue; }
+    else {
+      let ta = (bz0 - z1) / dz, tb = (bz1 - z1) / dz;
+      if (ta > tb) { const t = ta; ta = tb; tb = t; }
+      if (ta > t0) t0 = ta;
+      if (tb < t1) t1 = tb;
+      if (t0 > t1) continue;
+    }
+    return false; // the segment crosses this expanded box
+  }
+  return true;
+}
+
 // Slab raycast vs one AABB box (y 0..h). Writes nearest t to out {t}. -1 on miss.
 export function rayBox(ox, oy, oz, dx, dy, dz, maxD, b) {
   let tmin = 0, tmax = maxD;
