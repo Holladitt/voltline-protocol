@@ -1,6 +1,4 @@
 // VOLTLINE PROTOCOL — config.js
-// The single home of all balance numbers. Every module reads from here;
-// no damage, price, or timer value is duplicated in another module.
 export const CFG = {
   TICK: 1 / 60, MAX_STEPS: 5,
   MAP: { W: 64, H: 44, X0: -32, X1: 32, Z0: -22, Z1: 22 },
@@ -9,7 +7,6 @@ export const CFG = {
     friction: 10, jump: 5.2, gravity: 14,
   },
   PLAYER: { hp: 100, eye: 1.62, eyeCrouch: 1.12, radius: 0.38, height: 1.72 },
-  // Rounds: buy 15 s, freeze 5 s, live 100 s, end 6 s, intermission 8 s.
   ROUND: {
     buy: 15, freeze: 5, live: 100, end: 6, inter: 8,
     toWin: 7, maxRounds: 12, otMax: 3, bombTimer: 35,
@@ -19,9 +16,6 @@ export const CFG = {
     start: 800, win: 3250, loss: 1900, loss2: 2400, loss3: 2900,
     lossCap: 3400, kill: 300, plant: 300, defuse: 300, cap: 16000,
   },
-  // Weapons: name, price, body/head dmg, rpm, mag, reserve, reload,
-  // spread (still/moving/crouch, degrees), falloff start (m) + floor,
-  // pellets, auto, scope, moveSlow (movement multiplier while ADS).
   WEAPONS: {
     percik: {
       name: 'SPARK', price: 0, body: 34, head: 68, rpm: 400,
@@ -61,14 +55,11 @@ export const CFG = {
     },
   },
   ARMOR: { kevlar: 650, kevlarHelm: 1000, kit: 400, bodyRed: 0.35, headRed: 0.40 },
-  // Tactical knife (slot 3, key 3): close-range swing, no ammo.
   MELEE: { range: 2.2, dmg: 40, cd: 0.35 },
   GRENADES: {
     smoke: { price: 300, dur: 18, radius: 3.2 },
     flash: { price: 300, dur: 2.5, recover: 1.5, range: 25, cone: 120 },
   },
-  // Bots per difficulty: reaction (s), base accuracy @15m,
-  // headshot share, burst, spread multiplier.
   DIFF: {
     recruit: {
       react: [0.65, 0.85], acc: 0.28, hs: 0.08,
@@ -88,14 +79,12 @@ export const CFG = {
     hearRifle: 35, hearPistol: 25, hearSniper: 45,
     hearRun: 12, hearWalk: 8, hearCrouch: 3, fovTurn: 180,
   },
-  // Team colors & palette. Attackers ember orange, defenders electric blue.
   COLORS: {
     atk: 0xff7a1a, atkCss: '#FF8A1E', def: 0x3fa9f5, defCss: '#3FA9F5',
     volt: 0xffd21a, voltCss: '#FFD21A', night: 0x0b1026, glass: 0x9fd8ff,
     money: '#7BE495', danger: '#FF3B30',
   },
 };
-// Weapon slot order in the HUD & buy menu.
 export const SHOP_ORDER = ['petir9', 'jarum', 'sengat9', 'busur', 'senja12', 'percik'];
 export const TEAM_NAMES = { atk: 'CIRCUIT BREAKERS', def: 'GRID GUARDIANS' };
 export const TEAM_SHORT = { atk: 'BREAKERS', def: 'GUARDIANS' };

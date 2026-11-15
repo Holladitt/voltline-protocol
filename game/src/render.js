@@ -1,12 +1,7 @@
 // VOLTLINE PROTOCOL — render.js
-// What you see: the three.js scene built from state (read-only). Low-poly night
-// blue + volt-yellow + glass-white map, one warm directional + cold ambient,
-// thin fog from 60 m. Big-headed voxel bots, per-weapon viewmodels,
-// tracer/muzzle/smoke/explosion from fixed pools (<400 meshes, 60 fps target).
-// Render NEVER writes gameplay state.
 import * as THREE from 'three';
 import { CFG, SITE_NAMES } from './config.js';
-import { BOXES, SITES, GLASS_ZONES } from './map.js';
+import { BOXES, SITES, GLASS_ZONES, PROPS } from './map.js';
 import { curWeapon } from './state.js';
 
 const V3 = THREE.Vector3;
@@ -16,14 +11,11 @@ let tracers = [], smokes = [], muzzle = null, explosion = null, bombMesh = null;
 let siteLights = [], siteRings = [], mapGroup = null;
 let tmpV = new V3(), tmpV2 = new V3();
 
-// ADS FOV (pure function, no DOM — testable headless):
-// base 75 -> 55 without a scope, DMR 2x -> 38, sniper 4x -> 25.
 export function adsTargetFov(w) {
   if (!w) return 75;
   const sc = CFG.WEAPONS[w.id].scope;
   return sc === 4 ? 25 : sc === 2 ? 38 : 55;
 }
-// Mouse sensitivity narrows with FOV while ADS (fov/75).
 export function adsSensScale(fov) { return fov / 75; }
 
 let lastWeaponId = '';
@@ -53,7 +45,6 @@ function boardTexture(text, sub, color) {
   return t;
 }
 
-// Series-code stencil on crates/containers: volt-yellow text on a transparent canvas.
 const STENCIL_TEX = {};
 function stencilTexture(code) {
   if (STENCIL_TEX[code]) return STENCIL_TEX[code];
@@ -70,7 +61,6 @@ function stencilTexture(code) {
   return t;
 }
 
-// Skybox: bright golden-hour daytime gradient (bright blue -> warm yellow) + sun.
 function skyTexture() {
   const cv = document.createElement('canvas'); cv.width = 1024; cv.height = 512;
   const c = cv.getContext('2d');
@@ -91,8 +81,6 @@ function skyTexture() {
   return t;
 }
 
-// Procedural surface texture: one image used as diffuse + bump.
-// Square panels + seams + speckles; no external assets.
 function surfaceTexture(base, seam, speck, step) {
   const cv = document.createElement('canvas'); cv.width = 256; cv.height = 256;
   const c = cv.getContext('2d');
@@ -112,20 +100,19 @@ function surfaceTexture(base, seam, speck, step) {
   return { map, bump };
 }
 
-// Main map PBR materials (replacing Lambert): concrete floor, concrete wall, metal-plate cover.
 const PBR = {};
 function pbrMat(kind) {
   if (PBR[kind]) return PBR[kind];
   let t, m;
   if (kind === 'floor') {
-    t = surfaceTexture('#46536e', '#232c48', 'rgba(255,255,255,0.06)', 64);
+    t = surfaceTexture('#6b5636', '#4a3a22', 'rgba(0,0,0,0.18)', 64);
     t.map.repeat.set(8, 6); t.bump.repeat.set(8, 6);
     m = new THREE.MeshStandardMaterial({
       map: t.map, bumpMap: t.bump, bumpScale: 0.6,
       roughness: 0.9, metalness: 0.05,
     });
   } else if (kind === 'wall') {
-    t = surfaceTexture('#5a6a8c', '#39456a', 'rgba(255,255,255,0.05)', 85);
+    t = surfaceTexture('#5f6b62', '#454a42', 'rgba(255,255,255,0.05)', 85);
     t.map.repeat.set(3, 2); t.bump.repeat.set(3, 2);
     m = new THREE.MeshStandardMaterial({
       map: t.map, bumpMap: t.bump, bumpScale: 0.5,
@@ -142,6 +129,12 @@ function pbrMat(kind) {
   PBR[kind] = m;
   return m;
 }
+
+const RUST = ['#8a4a32', '#4a6a8a', '#a8854a', '#5a3a2a'].map((c) => {
+  const t = surfaceTexture(c, '#2c2018', 'rgba(0,0,0,0.25)', 32);
+  t.map.repeat.set(2, 2); t.bump.repeat.set(2, 2);
+  return new THREE.MeshStandardMaterial({ map: t.map, bumpMap: t.bump, bumpScale: 0.4, roughness: 0.6, metalness: 0.3 });
+});
 
 export function initRender(canvas) {
   renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
@@ -160,13 +153,10 @@ export function initRender(canvas) {
     renderer.setSize(window.innerWidth, window.innerHeight);
   });
 
-  // Procedural atmospheric skybox: dusk gradient + sun (no external assets).
   const sky = new THREE.Mesh(new THREE.SphereGeometry(190, 24, 16),
     new THREE.MeshBasicMaterial({ map: skyTexture(), side: THREE.BackSide, fog: false }));
   scene.add(sky);
 
-  // Bright daytime golden-hour light: strong sun + raised ambient/hemisphere.
-  // The sun casts sharp shadows; volt-yellow accents stay the brand colour.
   const sun = new THREE.DirectionalLight(0xffe9b0, 2.6);
   sun.position.set(-30, 40, -20);
   sun.castShadow = true;
@@ -189,19 +179,16 @@ export function initRender(canvas) {
 function buildMap() {
   mapGroup = new THREE.Group();
   scene.add(mapGroup);
-  // Floor: PBR night-blue concrete + thin yellow circuit lines.
   const floor = new THREE.Mesh(new THREE.PlaneGeometry(66, 46), pbrMat('floor'));
   floor.rotation.x = -Math.PI / 2; floor.position.set(0, 0, 0);
   floor.receiveShadow = true;
   mapGroup.add(floor);
-  // Yellow circuit lines on the floor (thin emissive strips).
   const stripMat = new THREE.MeshBasicMaterial({ color: 0xffd21a });
   for (const [x, z, w, d] of [[0, 0, 60, 0.12], [0, -14, 44, 0.12], [0, 14, 44, 0.12], [-20, -7, 0.12, 14], [20, -7, 0.12, 14]]) {
     const s = new THREE.Mesh(new THREE.PlaneGeometry(w, d), stripMat);
     s.rotation.x = -Math.PI / 2; s.position.set(x, 0.02, z);
     mapGroup.add(s);
   }
-  // Glass floor zones: semi-transparent panels + glowing cables underneath.
   for (const g of GLASS_ZONES) {
     const w = g.x1 - g.x0, d = g.z1 - g.z0;
     const under = new THREE.Mesh(new THREE.PlaneGeometry(w, d), new THREE.MeshBasicMaterial({ color: 0x061020 }));
@@ -218,22 +205,29 @@ function buildMap() {
     glass.rotation.x = -Math.PI / 2; glass.position.set((g.x0 + g.x1) / 2, 0.03, (g.z0 + g.z1) / 2);
     mapGroup.add(glass);
   }
-  // Map boxes: PBR concrete walls, PBR metal-plate cover; cast + receive shadows.
-  for (const b of BOXES) {
+  for (let bi = 0; bi < BOXES.length; bi++) {
+    const b = BOXES[bi];
+    if (b.prop) continue;
     const w = b.x1 - b.x0, d = b.z1 - b.z0;
     const isWall = b.h >= 3;
-    const m = box(w, b.h, d, isWall ? pbrMat('wall') : pbrMat('cover'));
+    const m = box(w, b.h, d, isWall ? pbrMat('wall') : RUST[bi % 4]);
     m.position.set((b.x0 + b.x1) / 2, b.h / 2, (b.z0 + b.z1) / 2);
     m.castShadow = true; m.receiveShadow = true;
     mapGroup.add(m);
-    // Volt-yellow trim on the top edge of cover.
     if (!isWall) {
       const trim = box(w + 0.04, 0.06, d + 0.04, new THREE.MeshBasicMaterial({ color: 0xffd21a }));
       trim.position.set(m.position.x, b.h + 0.03, m.position.z);
       mapGroup.add(trim);
     }
   }
-  // 3D site name boards (large banners) + plant ring + site lights.
+  drawProps();
+  buildStreet();
+  const trackMat = new THREE.MeshBasicMaterial({ color: 0x2a2018, transparent: true, opacity: 0.45 });
+  for (const [x, z, w, r] of [[-10, 0, 14, 0], [10, 0, 14, 0], [0, 14, 12, 1.57], [-20, -7, 10, 0.5], [20, 7, 10, -0.5], [0, -14, 12, 1.57]]) {
+    const t = new THREE.Mesh(new THREE.PlaneGeometry(w, 0.55), trackMat);
+    t.rotation.x = -Math.PI / 2; t.rotation.z = r; t.position.set(x, 0.015, z);
+    mapGroup.add(t);
+  }
   SITES.forEach((st, i) => {
     const board = new THREE.Mesh(new THREE.PlaneGeometry(10, 2.5),
       new THREE.MeshBasicMaterial({ map: boardTexture(i === 0 ? 'SITE A // NORTH RELAY' : 'SITE B // GLASS SUBSTATION', '· PLANT ZONE ·', '#FFD21A'), side: THREE.DoubleSide }));
@@ -247,8 +241,6 @@ function buildMap() {
     light.position.set(st.cx, 3, st.cz);
     scene.add(light); siteLights.push(light);
   });
-  // Series-code stencils on the vertical side of crates/containers at eye level
-  // (diegetic texture). Face: S = +z, N = -z, E = +x, W = -x.
   const STENCILS = [[15, 'IC-04', 'S'], [16, 'SEC-9', 'E'], [17, 'VOLT-7', 'W'], [20, 'RLY-2', 'S'], [22, 'KBL-11', 'S'], [24, 'GRD-5', 'N']];
   for (const [bi, code, face] of STENCILS) {
     const b = BOXES[bi];
@@ -262,11 +254,9 @@ function buildMap() {
     else { st.rotation.y = -Math.PI / 2; st.position.set(b.x0 - 0.02, y, (b.z0 + b.z1) / 2); }
     mapGroup.add(st);
   }
-  // Central relay pillar (small glowing tower).
   const tower = box(0.5, 6, 0.5, new THREE.MeshBasicMaterial({ color: 0xffd21a }));
   tower.position.set(0, 3, 0);
   mapGroup.add(tower);
-  // Steel gantry beams spanning the arena above the walls (visual depth).
   const gantryMat = new THREE.MeshStandardMaterial({ color: 0x3a4a5a, roughness: 0.4, metalness: 0.6 });
   for (const gz of [-7, 7]) {
     const beam = box(64, 0.4, 0.6, gantryMat);
@@ -275,25 +265,116 @@ function buildMap() {
   }
 }
 
-// --- Voxel bot: big head (headshot target), visor, glowing back line ---
+function drawProps() {
+  const tireG = new THREE.CylinderGeometry(0.55, 0.55, 0.28, 10);
+  const drumG = new THREE.CylinderGeometry(0.35, 0.35, 1, 10);
+  const wheelG = new THREE.CylinderGeometry(0.32, 0.32, 0.25, 10);
+  const tireM = mat(0x1a1a1a), woodM = mat(0x8a6a3a);
+  const rustM = [mat(0x8a4a32), mat(0x4a6a8a)];
+  let pi = 0;
+  const WH = [[-1.1, -0.8], [1.1, -0.8], [-1.1, 0.8], [1.1, 0.8]];
+  for (const k in PROPS) for (const [x, z] of PROPS[k]) {
+    pi++;
+    if (k === 'T') {
+      for (let i = 0; i < 3; i++) {
+        const t = new THREE.Mesh(tireG, tireM);
+        t.position.set(x, 0.14 + i * 0.28, z); mapGroup.add(t);
+      }
+    } else if (k === 'D') {
+      const d = new THREE.Mesh(drumG, rustM[pi % 2]);
+      d.position.set(x, 0.5, z); mapGroup.add(d);
+    } else if (k === 'S') {
+      const a = box(1.6, 0.5, 1.2, rustM[pi % 2]);
+      a.position.set(x, 0.25, z); a.rotation.y = pi; mapGroup.add(a);
+      const b2 = box(1, 0.5, 0.8, rustM[(pi + 1) % 2]);
+      b2.position.set(x + 0.2, 0.7, z - 0.1); b2.rotation.y = pi * 0.7; mapGroup.add(b2);
+    } else if (k === 'P') {
+      const p = box(1.4, 0.12, 1.4, woodM);
+      p.position.set(x, 0.06, z); mapGroup.add(p);
+      const s = box(1.4, 0.1, 0.25, woodM);
+      s.position.set(x, 0.18, z - 0.45); mapGroup.add(s);
+    } else if (k === 'W') {
+      const w = box(3.2, 0.6, 1.6, rustM[pi % 2]);
+      w.position.set(x, 0.45, z); mapGroup.add(w);
+      const cab = box(1.5, 0.5, 1.4, mat(0x2a2a2a));
+      cab.position.set(x - 0.2, 1, z); mapGroup.add(cab);
+      for (const [wx, wz] of WH) {
+        const wh = new THREE.Mesh(wheelG, tireM);
+        wh.rotation.x = Math.PI / 2; wh.position.set(x + wx, 0.32, z + wz); mapGroup.add(wh);
+      }
+    } else if (k === 'B') {
+      const b = box(3, 0.7, 0.5, mat(0x6a6a6a));
+      b.position.set(x, 0.35, z); mapGroup.add(b);
+      const s = box(3.04, 0.18, 0.54, new THREE.MeshBasicMaterial({ color: 0xffd21a }));
+      s.position.set(x, 0.55, z); mapGroup.add(s);
+    } else { // carrier: armored security vehicle
+      const hull = box(3.4, 1, 1.8, mat(0x3a4a3a));
+      hull.position.set(x, 0.7, z); mapGroup.add(hull);
+      const cab = box(1.6, 0.7, 1.6, mat(0x2a3a2a));
+      cab.position.set(x - 0.6, 1.55, z); mapGroup.add(cab);
+      for (const [wx, wz] of WH) {
+        const wh = new THREE.Mesh(wheelG, tireM);
+        wh.rotation.x = Math.PI / 2; wh.position.set(x + wx * 1.1, 0.32, z + wz * 1.15); mapGroup.add(wh);
+      }
+      const bd = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 0.4),
+        new THREE.MeshBasicMaterial({ map: stencilTexture('APC-1'), transparent: true }));
+      bd.position.set(x, 0.8, z + 0.92); mapGroup.add(bd);
+    }
+  }
+}
+
+const FAC = [[-32, -24.5, 7, 9], [-24, -24.5, 6, 11], [-16, -24.5, 8, 8], [-8, -24.5, 6, 10], [0, -24.5, 7, 9], [8, -24.5, 6, 11], [16, -24.5, 8, 8], [24, -24.5, 6, 10], [32, -24.5, 7, 9], [-36, 24.5, 7, 10], [-24, 24.5, 6, 9], [-12, 24.5, 8, 11], [0, 24.5, 6, 8], [12, 24.5, 7, 10], [24, 24.5, 6, 9], [36, 24.5, 7, 11]];
+function buildStreet() {
+  const PLASTER = [0x8a7a5a, 0x6a7a8a, 0x7a5a4a];
+  const SIGNS = ['SALVAGE CO', 'SCRAP YARD', 'JUNK 24H'];
+  for (let i = 0; i < FAC.length; i++) {
+    const [x, z, w, h] = FAC[i];
+    const f = box(w, h, 1.2, mat(PLASTER[i % 3]));
+    f.position.set(x, h / 2, z); mapGroup.add(f);
+    const win = new THREE.Mesh(new THREE.PlaneGeometry(w * 0.7, h * 0.35),
+      new THREE.MeshBasicMaterial({ color: 0x8fb8d8 }));
+    win.position.set(x, h * 0.55, z + (z < 0 ? 0.65 : -0.65));
+    if (z > 0) win.rotation.y = Math.PI;
+    mapGroup.add(win);
+    if (i % 3 === 0) {
+      const sg = new THREE.Mesh(new THREE.PlaneGeometry(4, 1),
+        new THREE.MeshBasicMaterial({ map: boardTexture(SIGNS[(i / 3 | 0) % 3], '· EST. 2088 ·', '#FFD21A'), side: THREE.DoubleSide }));
+      sg.position.set(x, h + 0.8, z); mapGroup.add(sg);
+    }
+  }
+  for (const [x, z] of [[-15, -28], [12, -28]]) {
+    const silo = new THREE.Mesh(new THREE.CylinderGeometry(1.6, 1.6, 10, 10), mat(0x7a8a9a));
+    silo.position.set(x, 5, z); mapGroup.add(silo);
+  }
+}
+
 function buildBotMesh(team) {
   const g = new THREE.Group();
-  // Friendly blue deepened (0x2b8fd9) so it stays readable in the bright daytime palette.
   const bodyC = team === 'you' ? 0x2b8fd9 : 0xff5a1a;
   const headC = team === 'you' ? 0xf5f5f0 : 0xff8a1e;
-  const body = box(0.72, 0.85, 0.4, mat(bodyC)); body.position.y = 0.95; g.add(body);
-  const head = box(0.44, 0.4, 0.44, mat(headC)); head.position.y = 1.58; g.add(head);
+  const foe = team === 'foe';
+  const body = box(0.72, 0.85, 0.4, mat(bodyC, foe ? { emissive: 0xcc3300, emissiveIntensity: 0.55 } : {})); body.position.y = 0.95; g.add(body);
+  const head = box(0.44, 0.4, 0.44, mat(headC, foe ? { emissive: 0xcc6600, emissiveIntensity: 0.4 } : {})); head.position.y = 1.58; g.add(head);
   const visor = box(0.36, 0.1, 0.05, new THREE.MeshBasicMaterial({ color: team === 'you' ? 0x7fd4ff : 0xffb020 })); visor.position.set(0, 1.6, -0.22); g.add(visor);
   const line = box(0.06, 0.8, 0.05, new THREE.MeshBasicMaterial({ color: team === 'you' ? 0x9fd8ff : 0xffd21a }));
   line.position.set(0, 0.95, 0.23); g.add(line);
   const legL = box(0.2, 0.5, 0.24, mat(0x141c33)); legL.position.set(-0.18, 0.25, 0); g.add(legL);
   const legR = box(0.2, 0.5, 0.24, mat(0x141c33)); legR.position.set(0.18, 0.25, 0); g.add(legR);
-  // Arms hold the weapon forward; small swing while moving.
   const armR = box(0.13, 0.5, 0.13, mat(bodyC)); armR.position.set(0.3, 1.15, -0.15); armR.rotation.x = -0.9; g.add(armR);
   const armL = box(0.13, 0.5, 0.13, mat(bodyC)); armL.position.set(-0.28, 1.15, -0.15); armL.rotation.x = -0.9; g.add(armL);
-  const gun = box(0.08, 0.12, 0.7, mat(0x222222)); gun.position.set(0.3, 1.15, -0.3); g.add(gun);
+  const gun = new THREE.Group();
+  const gb = box(0.09, 0.13, 0.5, mat(0x222222)); gun.add(gb);
+  const bar = box(0.05, 0.05, 0.45, mat(0x111111)); bar.position.set(0, 0.02, -0.42); gun.add(bar);
+  const mg = box(0.07, 0.18, 0.1, mat(0x1a1a1a)); mg.position.set(0, -0.14, 0.05); gun.add(mg);
+  const stk = box(0.08, 0.1, 0.22, mat(0x2a2a2a)); stk.position.set(0, 0, 0.32); gun.add(stk);
+  const fl = new THREE.Mesh(new THREE.PlaneGeometry(0.3, 0.3),
+    new THREE.MeshBasicMaterial({ map: starburstTexture(), transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending }));
+  fl.position.set(0, 0.02, -0.7); gun.add(fl);
+  const hR = box(0.09, 0.09, 0.13, mat(0x1f2a3a)); hR.position.set(0, -0.12, 0.08); gun.add(hR);
+  const hL = box(0.09, 0.09, 0.12, mat(0x1f2a3a)); hL.position.set(0, -0.1, -0.3); gun.add(hL);
+  gun.position.set(0.3, 1.15, -0.3); g.add(gun);
   g.traverse((o) => { if (o.isMesh) o.castShadow = true; }); // bots cast shadows
-  g.userData = { legL, legR, armL, armR, head, body, headMat: head.material, bodyMat: body.material };
+  g.userData = { legL, legR, armL, armR, head, body, headMat: head.material, bodyMat: body.material, gun, flash: fl, kick: 0 };
   scene.add(g);
   return g;
 }
@@ -302,24 +383,17 @@ function buildViewmodel() {
   viewmodel = new THREE.Group();
   camera.add(viewmodel);
   scene.add(camera);
-  // Viewmodel parts are rebuilt per weapon (different silhouettes).
   viewmodelParts = {
     body: box(0.1, 0.14, 0.55, mat(0x2a2f3a)),
     barrel: box(0.05, 0.05, 0.4, mat(0x1a1a1a)),
     grip: box(0.09, 0.2, 0.1, mat(0x222222)),
     accent: box(0.11, 0.03, 0.3, new THREE.MeshBasicMaterial({ color: 0xffd21a })),
     scope: box(0.06, 0.08, 0.22, mat(0x111111)),
-    // Scope lens: see-through glass + one emissive reticle dot in the centre.
     lens: new THREE.Mesh(new THREE.PlaneGeometry(0.05, 0.05),
       new THREE.MeshLambertMaterial({ color: 0x9fd8ff, transparent: true, opacity: 0.25 })),
     reticle: box(0.014, 0.014, 0.004, new THREE.MeshBasicMaterial({ color: 0xffd21a })),
-    // Per-weapon accent stripe (on the body side, colour swapped per weapon).
     stripe: box(0.115, 0.02, 0.3, new THREE.MeshBasicMaterial({ color: 0xffd21a })),
-    // Tactical knife blade (slot 3): only visible in the melee slot.
     blade: box(0.02, 0.3, 0.07, mat(0xcfd8e8)),
-    // Voxel hands + forearms: parented to the same viewmodel group, so they
-    // follow the recoil kick, walk bob, and reload dip. Hands below the sight line.
-    // Tactical gloves: dark + knuckle accents.
     handR: box(0.09, 0.09, 0.13, mat(0x1f2a3a)),
     knuckR: box(0.095, 0.02, 0.06, mat(0x0a0a0a)),
     foreR: box(0.09, 0.09, 0.34, mat(0x2e6db4)),
@@ -347,14 +421,12 @@ function buildViewmodel() {
   viewmodelParts.foreL.position.set(0.22, -0.44, -0.55);
   viewmodelParts.foreL.rotation.x = 0.4;
   for (const k in viewmodelParts) viewmodel.add(viewmodelParts[k]);
-  // Muzzle flash: 1-frame yellow starburst sprite (additive).
   muzzle = new THREE.Mesh(new THREE.PlaneGeometry(0.45, 0.45),
     new THREE.MeshBasicMaterial({ map: starburstTexture(), transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending }));
   muzzle.position.set(0.28, -0.24, -1.2);
   viewmodel.add(muzzle);
 }
 
-// Muzzle flash starburst: 8 spikes + glowing white core (not a plain square).
 function starburstTexture() {
   const cv = document.createElement('canvas'); cv.width = 128; cv.height = 128;
   const c = cv.getContext('2d');
@@ -373,14 +445,12 @@ function starburstTexture() {
   return new THREE.CanvasTexture(cv);
 }
 
-// Per-weapon accent stripe colours.
 const STRIPE_C = {
   percik: 0x9aa0aa, petir9: 0xffd21a, jarum: 0x3fa9f5,
   sengat9: 0xff8a1e, busur: 0xff3b30, senja12: 0x7be495,
 };
 
 function buildPools() {
-  // Tracers: 24 thin lines (white friendly, orange enemy).
   for (let i = 0; i < 24; i++) {
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3));
@@ -389,8 +459,6 @@ function buildPools() {
     scene.add(line);
     tracers.push({ line, t: 0 });
   }
-  // Smoke: 48 soft spheres — round from every angle (a sprite reads as a
-  // flat blue rectangle when it fills the camera).
   const sg = new THREE.SphereGeometry(1, 10, 8);
   for (let i = 0; i < 48; i++) {
     const sp = new THREE.Mesh(sg, new THREE.MeshBasicMaterial({ color: 0xcfd8e8, transparent: true, opacity: 0, depthWrite: false }));
@@ -398,7 +466,6 @@ function buildPools() {
     scene.add(sp);
     smokes.push({ sp, t: 0, life: 0, x: 0, y: 0, z: 0, seed: Math.random() * 10 });
   }
-  // Explosion: fireball + light.
   explosion = new THREE.Group();
   const ball = new THREE.Mesh(new THREE.SphereGeometry(1, 12, 10),
     new THREE.MeshBasicMaterial({ color: 0xff7a1a, transparent: true, opacity: 0 }));
@@ -406,7 +473,6 @@ function buildPools() {
   explosion.add(ball); explosion.add(elight);
   explosion.userData = { ball, elight, t: 0 };
   scene.add(explosion);
-  // Bomb: small box + blinking light.
   bombMesh = new THREE.Group();
   const bb = box(0.3, 0.2, 0.22, mat(0x222222)); bombMesh.add(bb);
   const bl = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 6), new THREE.MeshBasicMaterial({ color: 0xff3b30 }));
@@ -416,18 +482,14 @@ function buildPools() {
   scene.add(bombMesh);
 }
 
-// --- Per frame ---
 export function render(s, dt, time) {
   const p = s.player;
-  // Camera: menu = first-person AI pilot POV (the pilot bot's eyes);
-  // spectate = follow bot; main = FPS.
   if (s.phase === 'menu') {
     const b = s.bots[s._pilotId];
     if (b && b.alive) {
       camera.position.set(b.x, b.y + 1.6, b.z);
       camera.rotation.set(b.pitch || 0, b.yaw, 0);
     } else {
-      // Fallback: slow orbit around the action centre when no pilot is alive.
       let cx = 0, cz = 0, n = 0;
       for (const o of s.bots) if (o.alive) { cx += o.x; cz += o.z; n++; }
       if (n > 0) { cx /= n; cz /= n; }
@@ -447,15 +509,12 @@ export function render(s, dt, time) {
       p.z + (Math.random() - 0.5) * shake);
     camera.rotation.set(p.pitch, p.yaw, 0);
   }
-  // FOV: base 75; ADS 55 (no scope) / 38 (DMR 2x) / 25 (sniper 4x).
-  // Lerp each frame + updateProjectionMatrix while the FOV is still moving.
   const w = curWeapon(s);
   const targetFov = adsTargetFov(p.ads ? w : null);
   if (Math.abs(camera.fov - targetFov) > 0.05) {
     camera.fov += (targetFov - camera.fov) * Math.min(1, dt * 10);
     camera.updateProjectionMatrix();
   }
-  // Site lights: volt-yellow when planted, blue normally.
   const lit = s.mapLit;
   siteLights.forEach((l, i) => {
     l.color.setHex(lit ? 0xffd21a : 0x3fa9f5);
@@ -466,7 +525,6 @@ export function render(s, dt, time) {
     r.material.opacity = 0.6 + 0.3 * Math.sin(time * 3);
   });
 
-  // Bots: position, rotation, leg animation, crouch, dead = lying down.
   for (let i = 0; i < s.bots.length; i++) {
     const b = s.bots[i];
     if (!botMeshes[i]) botMeshes[i] = buildBotMesh(b.team);
@@ -486,22 +544,20 @@ export function render(s, dt, time) {
     u.armR.rotation.x = -0.9 - swing * 0.5;
     u.body.scale.y = b.crouch ? 0.75 : 1;
     u.head.position.y = b.crouch ? 1.25 : 1.58;
-    // Enemy flash: white blinking head while flashed, back to normal after.
-    // Hit-flash: whole body + head white for ~80ms when shot.
     u.head.material = (b.flashT > 0 || b.hitFlashT > 0) ? mat(0xffffff) : u.headMat;
     u.body.material = b.hitFlashT > 0 ? mat(0xffffff) : u.bodyMat;
+    u.kick = Math.max(0, (u.kick || 0) - dt);
+    u.gun.position.z = -0.3 + u.kick * 0.6;
+    if (u.flash) u.flash.material.opacity = Math.max(0, u.flash.material.opacity - dt * 10);
   }
 
-  // Viewmodel: per-weapon silhouette + recoil + reload dip.
   updateViewmodel(s, dt, time);
-  // Bomb in the world.
   if (s.bomb.state === 'planted') {
     bombMesh.visible = true;
     bombMesh.position.set(s.bomb.x, 0.15, s.bomb.z);
     bombMesh.userData.bl.material.color.setHex(Math.sin(time * 10) > 0 ? 0xff3b30 : 0x330000);
   } else bombMesh.visible = false;
 
-  // Tracers & smoke & explosion age out.
   for (const t of tracers) {
     if (t.t > 0) { t.t -= dt; t.line.material.opacity = Math.max(0, t.t / 0.12); }
     else t.line.material.opacity = 0;
@@ -521,15 +577,12 @@ export function render(s, dt, time) {
 
 function updateViewmodel(s, dt, time) {
   if (!viewmodel) return;
-  // Menu (AI pilot demo): the viewmodel follows the pilot bot's weapon.
   const pilot = s.phase === 'menu' ? s.bots[s._pilotId] : null;
   const w = pilot && pilot.alive ? pilot.weapon : curWeapon(s);
   const melee = s.player.slot === 'melee';
   const id = melee ? 'knife' : (w ? w.id : 'percik');
   if (id !== lastWeaponId) {
     lastWeaponId = id;
-    // Different silhouette per weapon: barrel length & body size.
-    // Melee: firearm hidden, knife blade shown, right hand to the grip.
     const isMelee = id === 'knife';
     viewmodelParts.body.visible = !isMelee;
     viewmodelParts.barrel.visible = !isMelee;
@@ -555,23 +608,18 @@ function updateViewmodel(s, dt, time) {
     }
   }
   const p = s.player;
-  // Sniper 4x zoom: viewmodel (hands included) hides behind the HUD scope overlay.
-  // Menu: shown from the pilot's POV; hidden only with no living pilot (orbit cam).
   viewmodel.visible = (s.phase !== 'menu' || (pilot && pilot.alive)) && !(p.ads && w && CFG.WEAPONS[w.id].scope === 4);
-  // Recoil kick + reload dip + walk bob.
   const kick = w ? (w.spreadBloom || 0) * 0.06 : 0;
   const reloading = w && w.reloading > 0;
   const bob = p.moveMag > 0.5 ? Math.sin(time * 9) * 0.012 : 0;
   viewmodel.position.y = (reloading ? -0.22 : 0) + bob;
   viewmodel.position.z = kick + (reloading ? 0.1 : 0);
   viewmodel.rotation.x = kick * 1.5 + (reloading ? 0.5 : 0);
-  // Knife swing: rotate the viewmodel for 0.3s after a swing.
   if (melee) {
     const k = Math.max(0, 0.3 - (s.time - (p.meleeLast || -9))) / 0.3;
     viewmodel.rotation.z = -k * 0.9;
     viewmodel.rotation.x = -k * 0.4;
   } else viewmodel.rotation.z = 0;
-  // ADS: viewmodel to the centre (all parts, hands & lens included).
   const adsK = p.ads ? 1 : 0;
   viewmodelParts.body.position.x += ((p.ads ? 0 : 0.28) - viewmodelParts.body.position.x) * Math.min(1, dt * 12);
   viewmodelParts.barrel.position.x = viewmodelParts.body.position.x;
@@ -588,7 +636,6 @@ function updateViewmodel(s, dt, time) {
   viewmodelParts.handL.position.x = viewmodelParts.body.position.x;
   viewmodelParts.knuckL.position.x = viewmodelParts.body.position.x;
   viewmodelParts.foreL.position.x = viewmodelParts.body.position.x - 0.06;
-  // Muzzle flash fades out.
   if (muzzle) muzzle.material.opacity = Math.max(0, muzzle.material.opacity - dt * 12);
 }
 
@@ -598,11 +645,9 @@ function updateSmokes(s, dt) {
     for (let k = 0; k < 6 && si < smokes.length; k++, si++) {
       const sp = smokes[si];
       const a = (k / 6) * Math.PI * 2 + sm.t;
-      // Layered 3D cloud: 3 layers (bottom/middle/top), different size + opacity.
       const layer = k % 3;
       sp.sp.scale.setScalar(2 + layer * 0.9 + sm.t * 0.4);
       sp.sp.position.set(sm.x + Math.cos(a) * 1.6, 0.6 + layer * 0.7 + Math.sin(sm.t * 0.7 + k) * 0.5, sm.z + Math.sin(a) * 1.6);
-      // Fade out when a puff gets too close to the camera (no flat wash).
       const d = sp.sp.position.distanceTo(camera.position);
       sp.sp.material.opacity = (0.35 + layer * 0.15) * Math.min(1, sm.t * 2) * (1 - sm.t / sm.dur) * Math.min(1, Math.max(0, (d - 1) / 2));
     }
@@ -610,7 +655,6 @@ function updateSmokes(s, dt) {
   for (; si < smokes.length; si++) smokes[si].sp.material.opacity = 0;
 }
 
-// Consume visual events from state.events.
 export function consumeRenderEvent(s, ev) {
   switch (ev.type) {
     case 'tracer': {
@@ -621,10 +665,18 @@ export function consumeRenderEvent(s, ev) {
       t.line.geometry.attributes.position.needsUpdate = true;
       t.line.material.color.setHex(ev.foe ? 0xff8a1e : 0xfff6c9);
       t.line.material.opacity = 1; // tracer core at full brightness
-      t.t = 0.12;
+      t.t = ev.foe ? 0.2 : 0.12; // enemy tracers read longer at distance
       break;
     }
-    case 'shot': if (muzzle && ev.own) muzzle.material.opacity = 1; break;
+    case 'shot': {
+      if (ev.own) { if (muzzle) muzzle.material.opacity = 1; }
+      else if (ev.botId !== undefined && botMeshes[ev.botId]) {
+        const u = botMeshes[ev.botId].userData;
+        if (u.flash) u.flash.material.opacity = 1;
+        u.kick = 0.09;
+      }
+      break;
+    }
     case 'planted': {
       explosion.position.set(ev.x || s.bomb.x, 0.5, ev.z || s.bomb.z);
       break;

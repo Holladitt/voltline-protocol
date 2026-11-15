@@ -1,11 +1,8 @@
 // VOLTLINE PROTOCOL — economy.js
-// Money & buy menu: prices from config, affordability checks, weapons lost on
-// death and kept when surviving. Bots follow the same rules (bots.js).
 import { CFG } from './config.js';
 import { giveWeapon, giveBotWeapon } from './weapons.js';
 import { emit } from './state.js';
 
-// Buy menu item list: {kind, id, name, price, desc}.
 export function shopItems(s) {
   const p = s.player;
   const items = [];
@@ -23,7 +20,6 @@ export function shopItems(s) {
 
 export function canAfford(s, price) { return s.player.money >= price; }
 
-// Buy one item. Returns {ok, reason}.
 export function buy(s, itemId) {
   const p = s.player;
   if (s.phase !== 'buy') return { ok: false, reason: 'Buy only during buy phase' };
@@ -50,7 +46,6 @@ export function buy(s, itemId) {
   return { ok: true };
 }
 
-// Auto-buy: rifle + armor when affordable, else SMG, else save.
 export function autoBuy(s) {
   const p = s.player;
   if (p.money >= 3350 && !p.primary) buy(s, 'petir9');
@@ -58,7 +53,6 @@ export function autoBuy(s) {
   if (p.money >= 300 && p.grenades.smoke === 0) buy(s, 'smoke');
 }
 
-// End-of-round rewards. winner: 'you' | 'foe'. reason: banner text.
 export function awardRound(s, winner, reason) {
   const p = s.player;
   const won = winner === 'you';
@@ -74,7 +68,6 @@ export function awardRound(s, winner, reason) {
     p.money = Math.min(CFG.MONEY.cap, p.money + loss);
     s.roundStats.money += loss;
   }
-  // Bots get paid too (for next round's buy).
   for (const b of s.bots) {
     const bWon = (winner === 'you') === (b.team === 'you');
     b.money = Math.min(CFG.MONEY.cap, b.money + (bWon ? CFG.MONEY.win : CFG.MONEY.loss));

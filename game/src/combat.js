@@ -1,12 +1,8 @@
 // VOLTLINE PROTOCOL — combat.js
-// Pure hit detection: slab raycast vs map boxes + bot body/head boxes.
-// No visuals, no sound — results arrive as events in state.events.
-// Head = smaller box above the body; all Y ranges are absolute.
 import { CFG } from './config.js';
 import { rayWalls, hasLOS } from './map.js';
 import { emit, radio } from './state.js';
 
-// Bot hit boxes (absolute y): body 0..h-0.34, head h-0.34..h. Crouching h=1.15.
 function botBoxes(b, body, head) {
   const h = b.crouch ? 1.15 : 1.72;
   body.x0 = b.x - 0.38; body.x1 = b.x + 0.38;
@@ -19,7 +15,6 @@ function botBoxes(b, body, head) {
 const _body = { x0: 0, x1: 0, z0: 0, z1: 0, y0: 0, y1: 0 };
 const _head = { x0: 0, x1: 0, z0: 0, z1: 0, y0: 0, y1: 0 };
 
-// Ray vs AABB with absolute Y range. -1 when nothing is hit within maxD.
 function rayHitBox(ox, oy, oz, dx, dy, dz, maxD, b) {
   let tmin = 0, tmax = maxD;
   const mins = [b.x0, b.y0, b.z0], maxs = [b.x1, b.y1, b.z1];
@@ -37,8 +32,6 @@ function rayHitBox(ox, oy, oz, dx, dy, dz, maxD, b) {
   return tmin;
 }
 
-// Shoot one ray from (ox,oy,oz) along (dx,dy,dz) up to maxD.
-// targets: entities {x,z,crouch,alive}. Returns {ent, head, dist, wall}.
 export function rayShoot(s, ox, oy, oz, dx, dy, dz, maxD, targets) {
   const wall = rayWalls(ox, oy, oz, dx, dy, dz, maxD);
   let best = wall, bestEnt = null, bestHead = false;
@@ -54,7 +47,6 @@ export function rayShoot(s, ox, oy, oz, dx, dy, dz, maxD, targets) {
   return { ent: bestEnt, head: bestHead, dist: best, wall };
 }
 
-// Damage with range falloff + armor. Integer, minimum 1.
 export function calcDamage(w, dist, head, target) {
   let dmg = head ? w.head : w.body;
   const start = w.falloff[0], floor = w.falloff[1];
@@ -69,11 +61,9 @@ export function calcDamage(w, dist, head, target) {
   return Math.max(1, Math.round(dmg));
 }
 
-// Apply damage; true when killed. Killfeed + event + kill reward written here.
 export function applyDamage(s, victim, dmg, attacker, head, weaponId) {
   if (!victim.alive) return false;
   victim.hp -= dmg;
-  // White hit-flash ~80 ms on a shot bot (not the player).
   if (victim.team) victim.hitFlashT = 0.08;
   const died = victim.hp <= 0;
   if (died) {
@@ -92,7 +82,6 @@ export function applyDamage(s, victim, dmg, attacker, head, weaponId) {
     s.killfeed.unshift({ a: aName, b: vName, w: weaponId, head, t: s.time });
     if (s.killfeed.length > 4) s.killfeed.pop();
     emit(s, 'kill', { attacker: aName, victim: vName, head, weapon: weaponId });
-    // Tactical radio: bots report kills (global throttle in radio()).
     if (attacker && attacker !== s.player && attacker.name) {
       radio(s, `${attacker.name}: ENEMY DOWN — ${vName}`);
     }
@@ -101,7 +90,6 @@ export function applyDamage(s, victim, dmg, attacker, head, weaponId) {
   return died;
 }
 
-// Angle of shot origin relative to player yaw (for the damage indicator).
 export function damageDir(s, fromX, fromZ) {
   const p = s.player;
   return Math.atan2(fromX - p.x, fromZ - p.z) - p.yaw;

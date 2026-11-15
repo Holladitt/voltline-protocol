@@ -1,15 +1,10 @@
 // VOLTLINE PROTOCOL — state.js
-// The ONLY place state is created and reset. Every module receives a reference
-// to this object; no value is duplicated in two places. Only sim.js
-// writes gameplay state; hud.js and render.js only read it.
 import { CFG } from './config.js';
 
 export const BOT_DEFS = [
-  // Player team (3 friendly bots) — names, starting roles. 4v4: player + 3 bots.
   { team: 'you', name: 'RAZOR',  role: 'entry' },
   { team: 'you', name: 'NOVA', role: 'support' },
   { team: 'you', name: 'HAVOC',  role: 'lurker' },
-  // Enemy team (4 enemy bots).
   { team: 'foe', name: 'STORM', role: 'entry' },
   { team: 'foe', name: 'VOLT',  role: 'support' },
   { team: 'foe', name: 'BOLT',  role: 'lurker' },
@@ -78,7 +73,6 @@ export function createState() {
   return s;
 }
 
-// Full match reset (from menu / rematch).
 export function resetMatch(s, diff) {
   const keep = s.diff;
   const fresh = createState();
@@ -87,7 +81,6 @@ export function resetMatch(s, diff) {
   s.phase = 'menu';
 }
 
-// Round reset: positions, HP, surviving weapons carried over, money kept.
 export function resetRound(s) {
   s.bomb = { state: 'carried', site: -1, x: 0, z: 0, timer: 0, carrier: -1, progress: 0, planter: -1, defuser: -1, beepT: 0 };
   s.smokes.length = 0; s.flashes.length = 0; s.nades.length = 0;
@@ -100,7 +93,6 @@ export function resetRound(s) {
   p.hitmarkT = 0; p.dmgDirT = 0; p.moveMag = 0;
   if (!p.primary) p.slot = 'secondary';
   else p.slot = 'primary';
-  // Surviving weapons: mag & reserve carried over; the dead lose their primary.
   for (const w of [p.primary, p.secondary]) if (w) { w.reloading = 0; w.reloadT = 0; w.spreadBloom = 0; }
   p.grenades = { smoke: 0, flash: 0 };
   for (const b of s.bots) {
@@ -123,9 +115,6 @@ export function emit(s, type, data) {
   s.events.push({ type, ...data });
 }
 
-// Bot tactical radio: short lines in the top-right HUD. Global 3 s throttle
-// to avoid spam — EXCEPT important events (plant/defuse) that always pass.
-// Feed capped at 4 lines, expiring after 5 s in the HUD.
 export function radio(s, txt, important = false) {
   if (!important && s.time - (s._radioT || -9) < 3) return;
   s._radioT = s.time;

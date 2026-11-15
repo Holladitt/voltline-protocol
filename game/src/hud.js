@@ -1,7 +1,4 @@
 // VOLTLINE PROTOCOL — hud.js
-// HUD: HTML panel above the canvas. Strings & DOM only update when their value
-// changes (last-* cache). 160px minimap + compass strip. Buy menu, main menu
-// (explainer poster), round-end & match-end overlays.
 import { CFG, SITE_NAMES, TEAM_NAMES, TEAM_SHORT } from './config.js';
 import { shopItems } from './economy.js';
 import { curWeapon } from './state.js';
@@ -59,6 +56,7 @@ export function initHUD(s, cb) {
   buildBuyMenu(s);
 }
 
+const GUN = '<svg viewBox="0 0 24 10" width="24" height="10" fill="currentColor"><path d="M0 5h13l2-2h6l2 2v1h-5l-2 2H8L7 6H0z"/></svg>';
 export function buildBuyMenu(s) {
   const box = $('buyItems');
   if (!box) return;
@@ -67,13 +65,12 @@ export function buildBuyMenu(s) {
     const d = document.createElement('div');
     d.className = 'buyItem';
     d.dataset.id = it.id;
-    d.innerHTML = `<b>${it.name}</b><span>${it.desc}</span><i>$${it.price}</i>`;
+    d.innerHTML = `<span class="wicon">${it.kind === 'weapon' ? GUN : it.kind === 'armor' ? '🛡' : it.kind === 'kit' ? '✚' : '◉'}</span><b>${it.name}</b><span>${it.desc}</span><i>$${it.price}</i>`;
     d.addEventListener('click', () => { callbacks.onBuy && callbacks.onBuy(it.id); });
     box.appendChild(d);
   }
 }
 
-// Refresh the whole HUD from state (read-only). Called every render frame.
 export function updateHUD(s, dt) {
   const p = s.player;
   const w = curWeapon(s);
@@ -86,7 +83,6 @@ export function updateHUD(s, dt) {
   if (s.phase === 'menu') { updatePilotHUD(s); return; }
   if (s.phase === 'matchend') { updateMatchEnd(s); return; }
 
-  // --- Bottom-left: faction & role + big HP + green bar + armor + blue bar + kit ---
   setText('faction', s.playerSide === 'atk' ? TEAM_NAMES.atk + ' · ATTACKER' : TEAM_NAMES.def + ' · DEFENDER');
   setText('hp', String(Math.max(0, Math.round(p.hp))));
   $('hp').style.color = p.hp < 20 ? '#FF3B30' : p.hp < 40 ? '#FF8A1E' : '#F5F5F0';
@@ -96,7 +92,6 @@ export function updateHUD(s, dt) {
   setText('money', '$' + p.money);
   show('kitBadge', p.hasKit);
 
-  // --- Bottom-right: weapon type & name + big ammo + numbered slot bar ---
   if (p.slot === 'melee') {
     setText('wname', 'TACTICAL KNIFE');
     setText('ammoMag', '—');
@@ -126,7 +121,6 @@ export function updateHUD(s, dt) {
   }
   if (p.hasBomb) setText('bombTag', '● BOMB — PLANT AT SITE'); else setText('bombTag', '');
 
-  // --- Top-centre: team names + 4v4 alive pips + score + timer + bomb status ---
   setText('teamsLine', `${TEAM_NAMES.atk} ${alivePips(s, 'atk')} · ${alivePips(s, 'def')} ${TEAM_NAMES.def}`);
   setText('bombStatus', bombStatusText(s));
   const bomb = s.bomb;
@@ -142,14 +136,12 @@ export function updateHUD(s, dt) {
   }
   setText('scoreLine', `SCORE ${s.scoreYou} — ${s.scoreFoe} · ROUND ${s.round}/12${s.ot ? ' · OT' + s.ot : ''} · YOU (${s.playerSide === 'atk' ? 'ATTACKER' : 'DEFENDER'}) · FIRST TO 7`);
 
-  // --- Kill feed & team lists ---
   const kf = $('killfeed');
   if (kf && last.kf !== s.killfeed.length + (s.killfeed[0] ? s.killfeed[0].t : 0)) {
     last.kf = s.killfeed.length + (s.killfeed[0] ? s.killfeed[0].t : 0);
     kf.innerHTML = s.killfeed.map((k) =>
       `<div><b class="atk">${k.a}</b> [${CFG.WEAPONS[k.w] ? CFG.WEAPONS[k.w].name : (k.w === 'knife' ? 'KNIFE' : k.w)}] <b class="def">${k.b}</b>${k.head ? ' <i>HEADSHOT</i>' : ''}</div>`).join('');
   }
-  // --- Bot tactical radio (max 3 lines, expires after 5s) ---
   const rd = $('radio');
   if (rd) {
     const lines = s.log.filter((e) => s.time - e.t >= 0 && s.time - e.t < 5).slice(-3);
@@ -162,7 +154,6 @@ export function updateHUD(s, dt) {
   setText('teamYou', TEAM_SHORT.def + ' · ' + teamAlive(s, 'you'));
   setText('teamFoe', TEAM_SHORT.atk + ' · ' + teamAlive(s, 'foe'));
 
-  // --- Crosshair: gap widens while moving/shooting, narrows while crouching/still ---
   const w2 = curWeapon(s);
   const spread = w2 ? (p.moveMag > 0.5 ? 14 : p.crouch ? 5 : 8) + (w2.spreadBloom || 0) * 6 : 8;
   const ch = $('crosshair');
@@ -171,23 +162,18 @@ export function updateHUD(s, dt) {
   if (p.hitmarkT > 0) {
     $('hitmark').className = 'hm' + (p.hitmarkKill ? ' kill' : p.hitmarkHead ? ' head' : '');
   }
-  // Damage direction arc + vignette.
   $('vignette').style.opacity = p.hp < 40 && p.alive ? String((40 - p.hp) / 40 * 0.8 + 0.2) : '0';
   const dd = $('dmgdir');
   if (dd) {
     dd.style.opacity = p.dmgDirT > 0 ? '1' : '0';
     dd.style.transform = `translate(-50%,-50%) rotate(${p.dmgDir}rad)`;
   }
-  // Flash overlay.
   const fl = $('flashov');
   if (fl) fl.style.opacity = p.flashT > 0 ? String(Math.min(1, p.flashT / 2.5)) : '0';
-  // Scope overlay for sniper/DMR while ADS.
   show('scope', p.ads && w && CFG.WEAPONS[w.id].scope >= 2);
 
-  // --- Contextual prompt (HOLD E) ---
   updatePrompt(s);
 
-  // --- Buy menu ---
   show('buymenu', s.phase === 'buy' && s.buyOpen);
   if (s.phase === 'buy') {
     setText('buyMoney', '$' + p.money);
@@ -198,19 +184,16 @@ export function updateHUD(s, dt) {
     });
   }
 
-  // --- Spectate ---
   show('spectate', !p.alive && s.phase === 'live');
   if (!p.alive && s.phase === 'live' && p.spectate >= 0) {
     const b = s.bots[p.spectate];
     if (b) setText('specText', `SPECTATING ${b.name} · HP ${Math.round(b.hp)} · ${CFG.WEAPONS[b.weapon.id].name} · Q to switch · ROUND CONTINUES`);
   }
 
-  // --- Minimap & compass & location label ---
   drawMinimap(s);
   updateCompass(s);
   setText('locLabel', '▸ ' + locName(s.player.x, s.player.z));
 
-  // --- Round-end overlay ---
   if (s.phase === 'end') {
     const won = (s._lastWinner || 'you') === 'you';
     setText('roundTitle', won ? 'ROUND WON' : 'ROUND LOST');
@@ -223,15 +206,12 @@ export function updateHUD(s, dt) {
 
 export function noteRoundWinner(s, w) { s._lastWinner = w; }
 
-// Menu phase: full HUD synced to the AI pilot bot (the camera follows the same bot).
-// sim.js keeps s._pilotId on a living bot and switches it when the pilot dies.
 function updatePilotHUD(s) {
   const b = s.bots[s._pilotId];
   if (!b || !b.alive) return;
   updateMenu(s);
   const side = (s.playerSide === 'atk') === (b.team === 'you') ? 'atk' : 'def';
 
-  // Bottom-left: faction & role + HP + armor + cash + kit.
   setText('faction', TEAM_NAMES[side] + (side === 'atk' ? ' · ATTACKER' : ' · DEFENDER'));
   setText('hp', String(Math.max(0, Math.round(b.hp))));
   $('hp').style.color = b.hp < 20 ? '#FF3B30' : b.hp < 40 ? '#FF8A1E' : '#F5F5F0';
@@ -241,7 +221,6 @@ function updatePilotHUD(s) {
   setText('money', '$' + b.money);
   show('kitBadge', b.hasKit);
 
-  // Bottom-right: pilot weapon + ammo + numbered slot bar.
   const w = b.weapon;
   setText('wname', w ? CFG.WEAPONS[w.id].name : '—');
   setText('ammoMag', w ? String(w.mag) : '—');
@@ -265,7 +244,6 @@ function updatePilotHUD(s) {
   }
   if (b.hasBomb) setText('bombTag', '● BOMB — PLANT AT SITE'); else setText('bombTag', '');
 
-  // Top-centre: team names + alive pips + bomb status + timer + phase + score line.
   setText('teamsLine', `${TEAM_NAMES.atk} ${alivePips(s, 'atk')} · ${alivePips(s, 'def')} ${TEAM_NAMES.def}`);
   setText('bombStatus', bombStatusText(s));
   const bomb = s.bomb;
@@ -280,7 +258,6 @@ function updatePilotHUD(s) {
   }
   setText('scoreLine', 'FIRST TO 7 · 12 ROUNDS · HALFTIME 6 · OT WIN BY 2');
 
-  // Kill feed & team lists (same as in-game).
   const kf = $('killfeed');
   if (kf && last.kf !== s.killfeed.length + (s.killfeed[0] ? s.killfeed[0].t : 0)) {
     last.kf = s.killfeed.length + (s.killfeed[0] ? s.killfeed[0].t : 0);
@@ -299,11 +276,9 @@ function updatePilotHUD(s) {
   setText('teamYou', TEAM_SHORT.def + ' · ' + teamAlive(s, 'you'));
   setText('teamFoe', TEAM_SHORT.atk + ' · ' + teamAlive(s, 'foe'));
 
-  // Crosshair gap follows the pilot's weapon bloom and movement.
   const spread = w ? (b.moving ? 14 : b.crouch ? 5 : 8) + (w.spreadBloom || 0) * 6 : 8;
   const ch = $('crosshair');
   if (ch) ch.style.setProperty('--gap', Math.round(spread) + 'px');
-  // Player-only overlays stay hidden during the demo; no buymenu or roundend in menu phase.
   show('hitmark', false);
   show('scope', false);
   show('spectate', false);
@@ -317,7 +292,6 @@ function updatePilotHUD(s) {
   if (pr) pr.style.display = 'none';
   last.prompt = null;
 
-  // Minimap & compass & location label from the pilot's viewpoint.
   drawMinimap(s, b);
   updateCompass(s, b);
   setText('locLabel', '▸ ' + locName(b.x, b.z));
@@ -329,7 +303,6 @@ function teamAlive(s, team) {
   return n + ' ALIVE';
 }
 
-// Alive-player pips 4v4: ■ alive, □ dead (for one atk/def side).
 function alivePips(s, side) {
   const team = (s.playerSide === 'atk') === (side === 'atk') ? 'you' : 'foe';
   let n = 0;
@@ -338,7 +311,6 @@ function alivePips(s, side) {
   return '■'.repeat(n) + '□'.repeat(4 - n);
 }
 
-// Bomb status top-centre: CORE ARMED (carried) / PLANTED + timer / DEFUSED.
 function bombStatusText(s) {
   const b = s.bomb;
   if (b.state === 'planted') return `◉ PLANTED — ${SITE_NAMES[b.site]} ${fmtTime(b.timer)}`;
@@ -347,7 +319,6 @@ function bombStatusText(s) {
   return '';
 }
 
-// Active location name (below the minimap).
 function locName(x, z) {
   if (Math.hypot(x + 20, z + 14) <= 5) return SITE_NAMES[0] + ' — SITE A';
   if (Math.hypot(x - 20, z + 14) <= 5) return SITE_NAMES[1] + ' — SITE B';
@@ -400,17 +371,14 @@ function drawMinimap(s, view) {
   const X = (x) => (x + 32) * sx, Z = (z) => (z + 22) * sz;
   c.clearRect(0, 0, W, H);
   c.fillStyle = 'rgba(8,12,28,0.85)'; c.fillRect(0, 0, W, H);
-  // Walls & cover.
   c.strokeStyle = 'rgba(245,245,240,0.7)'; c.lineWidth = 1;
   for (const b of BOXES) c.strokeRect(X(b.x0), Z(b.z0), (b.x1 - b.x0) * sx, (b.z1 - b.z0) * sz);
-  // Site.
   c.font = 'bold 11px sans-serif'; c.textAlign = 'center';
   SITES.forEach((st, i) => {
     c.fillStyle = s.bomb.state === 'planted' && s.bomb.site === i ? '#FF3B30' : '#FF8A1E';
     c.fillRect(X(st.cx) - 8, Z(st.cz) - 8, 16, 16);
     c.fillStyle = '#0b1026'; c.fillText(i === 0 ? 'A' : 'B', X(st.cx), Z(st.cz) + 4);
   });
-  // Friendly bots blue, enemies red only when visible / recently shooting.
   for (const b of s.bots) {
     if (!b.alive) continue;
     if (b.team === 'you') { c.fillStyle = '#3FA9F5'; c.beginPath(); c.arc(X(b.x), Z(b.z), 3, 0, 7); c.fill(); }
@@ -418,14 +386,12 @@ function drawMinimap(s, view) {
       c.fillStyle = '#FF3B30'; c.beginPath(); c.arc(X(b.x), Z(b.z), 3, 0, 7); c.fill();
     }
   }
-  // View cone (75° cone, ~40 m range) — transparent yellow.
   const p = v;
   c.fillStyle = 'rgba(255,210,26,0.14)';
   c.beginPath();
   c.moveTo(X(p.x), Z(p.z));
   c.arc(X(p.x), Z(p.z), 100, -p.yaw - Math.PI / 2 - 0.65, -p.yaw - Math.PI / 2 + 0.65);
   c.closePath(); c.fill();
-  // Viewpoint: white arrow.
   c.save(); c.translate(X(p.x), Z(p.z)); c.rotate(-p.yaw);
   c.fillStyle = '#F5F5F0';
   c.beginPath(); c.moveTo(0, -6); c.lineTo(4, 5); c.lineTo(-4, 5); c.closePath(); c.fill();

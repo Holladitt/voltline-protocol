@@ -1,8 +1,4 @@
 // VOLTLINE PROTOCOL — round.js
-// Round flow: buy 15 -> freeze 5 -> live 100 -> end 6. Plant 3 s (E),
-// defuse 5/2.5 s, bomb explodes 35 s after plant, timeout without plant =
-// defenders win. First-to-7, max 12 rounds, halftime at 6, OT win by 2 (max 3),
-// then a draw. Sides swap after round 6 (intermission 8 s).
 import { CFG, SITE_NAMES } from './config.js';
 import { resetRound, emit, radio } from './state.js';
 import { spawnBots, botBuy } from './bots.js';
@@ -25,8 +21,6 @@ export function startRound(s) {
   resetRound(s);
   spawnPlayer(s);
   spawnBots(s);
-  // Bomb carrier: when the player attacks, the player carries it; when defending,
-  // a random attacking bot.
   const atkBots = s.bots.filter((b) => (s.playerSide === 'atk') === (b.team === 'you'));
   if (s.playerSide === 'atk') {
     s.player.hasBomb = true;
@@ -50,7 +44,6 @@ function aliveCount(s, team) {
   return n;
 }
 
-// Called every tick by sim.js; drives phase transitions & end conditions.
 export function tickRound(s, dt) {
   if (s.phase === 'menu' || s.phase === 'matchend') return;
   s.phaseT -= dt;
@@ -65,7 +58,6 @@ export function tickRound(s, dt) {
   } else if (s.phase === 'intermission' && s.phaseT <= 0) {
     startRound(s);
   } else if (s.phase === 'live') {
-    // The bomb timer replaces the round timer after plant.
     if (b.state === 'planted') {
       b.timer -= dt;
       b.beepT -= dt;
@@ -77,14 +69,11 @@ export function tickRound(s, dt) {
     } else if (s.phaseT <= 0) {
       return endRound(s, s.playerSide === 'atk' ? 'foe' : 'you', 'TIME UP — NO PLANT');
     }
-    // Elimination. After plant, the round ends only by explosion/defuse,
-    // or when all defenders are gone (attackers win).
     const atkTeam = s.playerSide === 'atk' ? 'you' : 'foe';
     const defTeam = atkTeam === 'you' ? 'foe' : 'you';
     const atkAlive = aliveCount(s, atkTeam), defAlive = aliveCount(s, defTeam);
     if (b.state === 'planted') {
       if (defAlive === 0) return endRound(s, atkTeam, 'DEFENDERS ELIMINATED — BOMB DETONATES');
-      // Attackers eliminated but bomb planted: defenders must defuse before the timer.
     } else {
       if (atkAlive === 0) return endRound(s, defTeam, 'ATTACKERS ELIMINATED');
       if (defAlive === 0) return endRound(s, atkTeam, 'DEFENDERS ELIMINATED');
@@ -94,7 +83,6 @@ export function tickRound(s, dt) {
   }
 }
 
-// Bomb planted successfully (by player or bot).
 export function plantBomb(s, planter, site) {
   const b = s.bomb;
   b.state = 'planted'; b.site = site;
@@ -113,7 +101,6 @@ export function plantBomb(s, planter, site) {
   radio(s, `${planter === s.player ? 'YOU' : planter.name}: BOMB PLANTED AT ${'AB'[site]}`, true);
 }
 
-// Bomb defused successfully.
 export function defuseBomb(s, defuser) {
   const b = s.bomb;
   b.state = 'defused'; b.defuser = defuser === s.player ? -1 : defuser.id;
@@ -133,7 +120,6 @@ function endRound(s, winner, reason) {
   s.endReason = reason;
   if (winner === 'you') s.scoreYou++; else s.scoreFoe++;
   awardRound(s, winner, reason);
-  // A dead player loses primary & armor.
   if (!s.player.alive) { s.player.primary = null; s.player.armor = 0; s.player.helm = false; s.player.hasKit = false; }
   for (const b of s.bots) if (!b.alive) { b.weaponId = 'percik'; b.armor = 0; b.helm = false; b.hasKit = false; }
   s.endDetail = `ROUND ${s.round} · ${SITE_NAMES[s.bomb.site] || ''}`;
@@ -141,7 +127,6 @@ function endRound(s, winner, reason) {
 }
 
 function nextRound(s) {
-  // Check match win.
   const toWin = CFG.ROUND.toWin;
   if (s.scoreYou >= toWin || s.scoreFoe >= toWin) return endMatch(s);
   if (s.round >= CFG.ROUND.maxRounds) {
@@ -152,7 +137,6 @@ function nextRound(s) {
     return endMatch(s);
   }
   s.round++;
-  // Swap sides after round 6.
   if (s.round === 7) {
     s.playerSide = s.playerSide === 'atk' ? 'def' : 'atk';
     s.phase = 'intermission'; s.phaseT = CFG.ROUND.inter;
@@ -167,14 +151,12 @@ function endMatch(s) {
   if (s.scoreYou > s.scoreFoe) s.winner = 'you';
   else if (s.scoreFoe > s.scoreYou) s.winner = 'foe';
   else s.winner = 'draw';
-  // MVP: most kills (player or bot).
   let mvp = s.player, mk = s.player.kills;
   for (const b of s.bots) if (b.kills > mk) { mk = b.kills; mvp = b; }
   s.mvp = mvp === s.player ? 'YOU' : mvp.name;
   emit(s, 'matchEnd', { winner: s.winner, scoreYou: s.scoreYou, scoreFoe: s.scoreFoe, mvp: s.mvp });
 }
 
-// Round winner name for the HUD: 'you' = the player's team.
 export function scoreLine(s) {
   return { you: s.scoreYou, foe: s.scoreFoe, round: s.round };
 }

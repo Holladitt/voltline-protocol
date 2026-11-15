@@ -1,7 +1,4 @@
 // VOLTLINE PROTOCOL — weapons.js
-// Weapons: data from config, player fire (hitscan + spread + recoil),
-// reload, slot switching, and bot fire (accuracy by range & difficulty).
-// Spread: still < moving (2.5-4x) < crouch -20-30%; 0.25 s settle after stopping.
 import { CFG } from './config.js';
 import { rayShoot, calcDamage, applyDamage } from './combat.js';
 import { hasLOS } from './map.js';
@@ -9,7 +6,6 @@ import { curWeapon, emit, newWeaponState } from './state.js';
 
 const D2R = Math.PI / 180;
 
-// Effective spread (degrees) for weapon w under a given movement state.
 export function spreadDeg(w, moveMag, crouch, settleT, bloom) {
   let sp = w.spread[0];
   if (moveMag > 0.5) sp = w.spread[1];
@@ -18,8 +14,6 @@ export function spreadDeg(w, moveMag, crouch, settleT, bloom) {
   return sp + bloom;
 }
 
-// Fire direction from yaw/pitch + random deviation inside the spread cone (degrees).
-// Writes to out {x,y,z} — no allocation.
 export function aimDir(yaw, pitch, spread, out) {
   const a = (Math.random() - 0.5) * 2 * spread * D2R;
   const b = (Math.random() - 0.5) * 2 * spread * D2R;
@@ -32,14 +26,12 @@ export function aimDir(yaw, pitch, spread, out) {
 const _dir = { x: 0, y: 0, z: 0 };
 const _foes = []; // scratch target list, reused every shot
 
-// Can the weapon fire right now (fire rate, mag, reload)?
 export function canFire(ws, now) {
   const w = CFG.WEAPONS[ws.id];
   if (ws.reloading > 0 || ws.mag <= 0) return false;
   return now - ws.lastShot >= 60 / w.rpm;
 }
 
-// One player bullet. targets = living enemy bots. Returns 'shot'|'dry'|'no'.
 export function firePlayer(s, now) {
   const p = s.player;
   const ws = curWeapon(s);
@@ -83,8 +75,6 @@ export function firePlayer(s, now) {
   return 'shot';
 }
 
-// One bot shot at a target (player or bot). Accuracy = difficulty x range x movement.
-// Bots aim with angular error; the raycast decides hit or miss — no wallhack.
 export function fireBot(s, b, target, now) {
   const ws = b.weapon;
   const w = CFG.WEAPONS[ws.id];
@@ -94,15 +84,12 @@ export function fireBot(s, b, target, now) {
   const d = CFG.DIFF[s.diff];
   const dx = target.x - b.x, dz = target.z - b.z;
   const dist = Math.hypot(dx, dz);
-  // Base accuracy drops 12% per +10 m, -18% while the bot moves.
   let acc = d.acc * Math.max(0.15, 1 - 0.12 * Math.max(0, (dist - 15) / 10));
   if (b.moving) acc *= 0.82;
   const baseSpread = w.spread[0] * d.spread;
-  // Angular error: lower acc means bigger error. 1 sigma ~ (1-acc) * 2.2 degrees.
   const err = (1 - acc) * 2.4 + baseSpread;
   const eyeY = b.y + (b.crouch ? 1.12 : 1.55);
   const ty = target.y + (target.crouch ? 0.9 : 1.35);
-  // Aim for the head with probability = headshot share (cap per difficulty).
   const aimHead = Math.random() < d.hs;
   const aimY = aimHead ? target.y + (target.crouch ? 1.0 : 1.6) : ty;
   const yaw = Math.atan2(-(target.x - b.x), -(target.z - b.z));
@@ -133,7 +120,6 @@ export function fireBot(s, b, target, now) {
   return hitAny;
 }
 
-// Player reload: shotgun per-shell, everything else in one go.
 export function startReload(s) {
   const ws = curWeapon(s);
   if (!ws || ws.reloading > 0 || ws.mag >= CFG.WEAPONS[ws.id].mag) return false;
@@ -149,7 +135,6 @@ export function startReloadBot(s, b) {
   ws.reloading = w.reload; ws.reloadT = w.reload;
   emit(s, 'reloadBot', { id: b.id, dist: Math.hypot(b.x - s.player.x, b.z - s.player.z) });
 }
-// Advance the reload timer; fill the magazine when done.
 export function tickReload(ws, dt) {
   if (ws.reloading <= 0) return;
   ws.reloading -= dt;
@@ -179,8 +164,6 @@ export function giveBotWeapon(b, id) {
   b.weaponId = id;
 }
 
-// Tactical knife (slot 3): close-range swing, 40 damage, 0.35 s cooldown.
-// Hits when an enemy is within 2.2 m ahead (±26° cone) + clear line of sight.
 export function swingMelee(s, now) {
   const p = s.player;
   if (now - (p.meleeLast || -9) < CFG.MELEE.cd) return 'no';

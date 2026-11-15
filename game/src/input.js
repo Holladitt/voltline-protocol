@@ -1,7 +1,4 @@
 // VOLTLINE PROTOCOL — input.js
-// Keyboard + mouse + pointer lock menjadi perintah bersih {f, s, run, crouch,
-// jump, fire, ads, reload, use, slot, grenade, specNext}. Sim membaca cmd;
-// input tidak pernah menyentuh state game langsung (kecuali callback UI).
 import { CFG } from './config.js';
 
 export function createInput(canvas) {
@@ -52,7 +49,6 @@ export function createInput(canvas) {
     cmd.lookDY += e.movementY;
   });
 
-  // Terapkan look ke pemain; dipanggil main.js tiap frame SEBELUM sim.
   function applyLook(p, sens) {
     if (cmd.lookDX || cmd.lookDY) {
       p.yaw -= cmd.lookDX * 0.0022 * sens;
@@ -63,7 +59,6 @@ export function createInput(canvas) {
     }
   }
 
-  // Baca state tombol menjadi cmd gerak (dipanggil tiap frame).
   function poll() {
     const f = (keys['KeyW'] ? 1 : 0) - (keys['KeyS'] ? 1 : 0);
     const s = (keys['KeyD'] ? 1 : 0) - (keys['KeyA'] ? 1 : 0);
@@ -75,7 +70,6 @@ export function createInput(canvas) {
     return cmd;
   }
 
-  // Konsumsi flag sekali-pakai setelah sim membacanya.
   function consume() {
     cmd.reload = false; cmd.slot = null; cmd.grenade = null; cmd.specNext = false;
   }
