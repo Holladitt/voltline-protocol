@@ -62,10 +62,85 @@ function softTexture() {
   return new THREE.CanvasTexture(cv);
 }
 
+// Skybox: gradasi senja (biru malam -> ungu -> oranye horizon) + matahari.
+function skyTexture() {
+  const cv = document.createElement('canvas'); cv.width = 1024; cv.height = 512;
+  const c = cv.getContext('2d');
+  const g = c.createLinearGradient(0, 0, 0, 512);
+  g.addColorStop(0, '#0a1230');
+  g.addColorStop(0.45, '#27407a');
+  g.addColorStop(0.68, '#7a5a8a');
+  g.addColorStop(0.8, '#ff9a3c');
+  g.addColorStop(1, '#2a1a2a');
+  c.fillStyle = g; c.fillRect(0, 0, 1024, 512);
+  const sg = c.createRadialGradient(720, 330, 8, 720, 330, 130);
+  sg.addColorStop(0, 'rgba(255,230,160,1)');
+  sg.addColorStop(0.25, 'rgba(255,180,80,0.8)');
+  sg.addColorStop(1, 'rgba(255,150,60,0)');
+  c.fillStyle = sg; c.fillRect(0, 0, 1024, 512);
+  const t = new THREE.CanvasTexture(cv);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+// Tekstur permukaan prosedural: satu gambar dipakai sebagai diffuse + bump.
+// Panel kotak + sambungan + bintik; tanpa aset luar.
+function surfaceTexture(base, seam, speck, step) {
+  const cv = document.createElement('canvas'); cv.width = 256; cv.height = 256;
+  const c = cv.getContext('2d');
+  c.fillStyle = base; c.fillRect(0, 0, 256, 256);
+  c.strokeStyle = seam; c.lineWidth = 3;
+  for (let p = 0; p <= 256; p += step) {
+    c.beginPath(); c.moveTo(p, 0); c.lineTo(p, 256); c.stroke();
+    c.beginPath(); c.moveTo(0, p); c.lineTo(256, p); c.stroke();
+  }
+  c.fillStyle = speck;
+  for (let i = 0; i < 260; i++) c.fillRect(Math.random() * 256, Math.random() * 256, 2, 2);
+  const map = new THREE.CanvasTexture(cv);
+  map.colorSpace = THREE.SRGBColorSpace;
+  map.wrapS = map.wrapT = THREE.RepeatWrapping;
+  const bump = new THREE.CanvasTexture(cv);
+  bump.wrapS = bump.wrapT = THREE.RepeatWrapping;
+  return { map, bump };
+}
+
+// Material PBR map utama (ganti Lambert): floor beton, wall beton, cover plat logam.
+const PBR = {};
+function pbrMat(kind) {
+  if (PBR[kind]) return PBR[kind];
+  let t, m;
+  if (kind === 'floor') {
+    t = surfaceTexture('#1a2340', '#0d1326', 'rgba(255,255,255,0.05)', 64);
+    t.map.repeat.set(8, 6); t.bump.repeat.set(8, 6);
+    m = new THREE.MeshStandardMaterial({
+      map: t.map, bumpMap: t.bump, bumpScale: 0.6,
+      roughness: 0.9, metalness: 0.05,
+    });
+  } else if (kind === 'wall') {
+    t = surfaceTexture('#232c4a', '#12172c', 'rgba(255,255,255,0.04)', 85);
+    t.map.repeat.set(3, 2); t.bump.repeat.set(3, 2);
+    m = new THREE.MeshStandardMaterial({
+      map: t.map, bumpMap: t.bump, bumpScale: 0.5,
+      roughness: 0.85, metalness: 0.05,
+    });
+  } else { // cover: plat logam sirkuit
+    t = surfaceTexture('#2e3a55', '#141a2c', 'rgba(255,210,26,0.10)', 128);
+    t.map.repeat.set(2, 2); t.bump.repeat.set(2, 2);
+    m = new THREE.MeshStandardMaterial({
+      map: t.map, bumpMap: t.bump, bumpScale: 0.4,
+      roughness: 0.5, metalness: 0.35,
+    });
+  }
+  PBR[kind] = m;
+  return m;
+}
+
 export function initRender(canvas) {
   renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   scene = new THREE.Scene();
   scene.background = new THREE.Color(0x0b1026);
   scene.fog = new THREE.Fog(0x0b1026, 55, 95);
@@ -77,12 +152,23 @@ export function initRender(canvas) {
     renderer.setSize(window.innerWidth, window.innerHeight);
   });
 
-  // Cahaya: satu directional hangat + ambient dingin.
-  const sun = new THREE.DirectionalLight(0xffd9a0, 1.1);
+  // Skybox atmosferik prosedural: gradasi senja + matahari (tanpa aset luar).
+  const sky = new THREE.Mesh(new THREE.SphereGeometry(190, 24, 16),
+    new THREE.MeshBasicMaterial({ map: skyTexture(), side: THREE.BackSide, fog: false }));
+  scene.add(sky);
+
+  // Cahaya: satu directional hangat + ambient dingin. Matahari melempar bayangan.
+  const sun = new THREE.DirectionalLight(0xffd9a0, 1.6);
   sun.position.set(-30, 40, -20);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(1024, 1024);
+  sun.shadow.camera.left = -36; sun.shadow.camera.right = 36;
+  sun.shadow.camera.top = 26; sun.shadow.camera.bottom = -26;
+  sun.shadow.camera.near = 1; sun.shadow.camera.far = 120;
+  sun.shadow.bias = -0.0004;
   scene.add(sun);
-  scene.add(new THREE.AmbientLight(0x4a5a8a, 0.9));
-  const hemi = new THREE.HemisphereLight(0x2a3a6a, 0x0b1026, 0.5);
+  scene.add(new THREE.AmbientLight(0x4a5a8a, 1.0));
+  const hemi = new THREE.HemisphereLight(0x2a3a6a, 0x0b1026, 0.6);
   scene.add(hemi);
 
   buildMap();
@@ -94,9 +180,10 @@ export function initRender(canvas) {
 function buildMap() {
   mapGroup = new THREE.Group();
   scene.add(mapGroup);
-  // Lantai: beton biru malam + garis sirkuit kuning tipis.
-  const floor = new THREE.Mesh(new THREE.PlaneGeometry(66, 46), mat(0x141c33));
+  // Lantai: beton biru malam PBR + garis sirkuit kuning tipis.
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(66, 46), pbrMat('floor'));
   floor.rotation.x = -Math.PI / 2; floor.position.set(0, 0, 0);
+  floor.receiveShadow = true;
   mapGroup.add(floor);
   // Garis sirkuit kuning di lantai (strip tipis emissive).
   const stripMat = new THREE.MeshBasicMaterial({ color: 0xffd21a });
@@ -122,12 +209,13 @@ function buildMap() {
     glass.rotation.x = -Math.PI / 2; glass.position.set((g.x0 + g.x1) / 2, 0.03, (g.z0 + g.z1) / 2);
     mapGroup.add(glass);
   }
-  // Kotak map: dinding biru gelap, cover panel volt / kaca.
+  // Kotak map: dinding beton PBR, cover plat logam PBR; lempar + terima bayangan.
   for (const b of BOXES) {
     const w = b.x1 - b.x0, d = b.z1 - b.z0;
     const isWall = b.h >= 3;
-    const m = box(w, b.h, d, isWall ? mat(0x1d2745) : mat(0x2a3550));
+    const m = box(w, b.h, d, isWall ? pbrMat('wall') : pbrMat('cover'));
     m.position.set((b.x0 + b.x1) / 2, b.h / 2, (b.z0 + b.z1) / 2);
+    m.castShadow = true; m.receiveShadow = true;
     mapGroup.add(m);
     // Trim kuning volt di tepi atas cover.
     if (!isWall) {
@@ -169,6 +257,7 @@ function buildBotMesh(team) {
   const legL = box(0.2, 0.5, 0.24, mat(0x141c33)); legL.position.set(-0.18, 0.25, 0); g.add(legL);
   const legR = box(0.2, 0.5, 0.24, mat(0x141c33)); legR.position.set(0.18, 0.25, 0); g.add(legR);
   const gun = box(0.08, 0.12, 0.7, mat(0x222222)); gun.position.set(0.3, 1.15, -0.3); g.add(gun);
+  g.traverse((o) => { if (o.isMesh) o.castShadow = true; }); // bot melempar bayangan
   g.userData = { legL, legR, head, body, headMat: head.material };
   scene.add(g);
   return g;
@@ -256,11 +345,15 @@ function buildPools() {
 // --- Per frame ---
 export function render(s, dt, time) {
   const p = s.player;
-  // Kamera: menu = orbit lambat; spectate = ikuti bot; main = FPS.
+  // Kamera: menu = orbit RENDAH mengikuti pusat aksi demo (bukan orbit jauh
+  // di atas map kosong); spectate = ikuti bot; main = FPS.
   if (s.phase === 'menu') {
-    const a = time * 0.08;
-    camera.position.set(Math.sin(a) * 26, 12, Math.cos(a) * 18);
-    camera.lookAt(0, 1, -6);
+    let cx = 0, cz = 0, n = 0;
+    for (const b of s.bots) if (b.alive) { cx += b.x; cz += b.z; n++; }
+    if (n > 0) { cx /= n; cz /= n; }
+    const a = time * 0.12;
+    camera.position.set(cx + Math.sin(a) * 9, 3.4, cz + Math.cos(a) * 9);
+    camera.lookAt(cx, 1.2, cz);
   } else if (!p.alive && p.spectate >= 0 && s.bots[p.spectate]) {
     const b = s.bots[p.spectate];
     camera.position.set(b.x, b.y + 1.6, b.z);

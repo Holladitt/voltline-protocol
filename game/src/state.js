@@ -5,17 +5,15 @@
 import { CFG } from './config.js';
 
 export const BOT_DEFS = [
-  // Tim pemain (4 bot kawan) — nama, peran awal.
+  // Tim pemain (3 bot kawan) — nama, peran awal. 4v4: pemain + 3 bot.
   { team: 'you', name: 'RAKA',  role: 'entry' },
   { team: 'you', name: 'SINTA', role: 'support' },
   { team: 'you', name: 'BIMO',  role: 'lurker' },
-  { team: 'you', name: 'NADIA', role: 'anchor' },
-  // Tim lawan (5 bot musuh).
+  // Tim lawan (4 bot musuh).
   { team: 'foe', name: 'GUNTUR', role: 'entry' },
   { team: 'foe', name: 'PETIR',  role: 'support' },
   { team: 'foe', name: 'KILAT',  role: 'lurker' },
   { team: 'foe', name: 'SENGAT', role: 'anchor' },
-  { team: 'foe', name: 'BADAI',  role: 'flex' },
 ];
 
 export function newWeaponState(id) {
@@ -75,7 +73,7 @@ export function createState() {
     menuCam: 0, endReason: '', endDetail: '',
     log: [], // pesan singkat di HUD (mis. "BOT MENANAM BOM")
   };
-  for (let i = 0; i < 9; i++) s.bots.push(newBot(BOT_DEFS[i], i));
+  for (let i = 0; i < 7; i++) s.bots.push(newBot(BOT_DEFS[i], i));
   return s;
 }
 

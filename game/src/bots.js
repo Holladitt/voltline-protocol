@@ -1,5 +1,5 @@
 // VOLTLINE PROTOCOL — bots.js
-// AI bot 5v5: state machine patrol/hold/engage/retreat/plant/defuse/buy,
+// AI bot 4v4: state machine patrol/hold/engage/retreat/plant/defuse/buy,
 // peran per ronde (entry/support/lurker/anchor/flex), vision cone 100°/70°,
 // sight 40 m terbuka / 25 m koridor, memori 2.5 dtk, TANPA wallhack:
 // LOS dicek raycast, suara hanya arah kasar ±30° + band jarak, asap memblokir
@@ -169,7 +169,7 @@ export function tickBot(s, b, dt) {
   if (b.smokeT > 0) b.smokeT -= dt;
   tickReload(b.weapon, dt);
 
-  // 1. Persepsi: scan tiap tick (murah: 9 bot x ~5 target, raycast pendek).
+  // 1. Persepsi: scan tiap tick (murah: 7 bot x ~4 target, raycast pendek).
   const seen = scanTargets(s, b);
   if (seen) {
     const prevT = b.targetIsPlayer ? -2 : b.target;
@@ -209,21 +209,16 @@ export function tickBot(s, b, dt) {
       break;
     }
     case 'plant': {
-      // Plant butuh site bersih 2 dtk, lalu 3 dtk tanpa menembak.
+      // Plant: hitung mundur 3 dtk. Penyelesaian (plantBomb) dilakukan blok
+      // sim.js tepat setelah tick ini — JANGAN selesaikan di sini, kalau tidak
+      // plantBomb tidak pernah terpanggil (bug v1: bot "plant" tapi bom tak
+      // pernah ter-plant).
       b.plantT += dt;
-      if (b.plantT >= CFG.ROUND.plantTime) {
-        b.plantT = 0; b.state = 'patrol';
-        emit(s, 'botPlanted', { id: b.id });
-      }
       break;
     }
     case 'defuse': {
+      // Defuse: hitung mundur 5 dtk (2,5 dtk dengan kit). Penyelesaian di sim.js.
       b.defuseT += dt;
-      const need = b.hasKit ? CFG.ROUND.defuseKitTime : CFG.ROUND.defuseTime;
-      if (b.defuseT >= need) {
-        b.defuseT = 0; b.state = 'patrol';
-        emit(s, 'botDefused', { id: b.id });
-      }
       break;
     }
     case 'engage': {
@@ -268,17 +263,35 @@ export function tickBot(s, b, dt) {
       // Tentukan tujuan dari peran & fase bom.
       if (!b.route.length || b.routeI >= b.route.length) decideMove(s, b, isAtkTeam);
       if (b.waitT > 0) { b.waitT -= dt; b.moving = false; }
-      else if (!followRoute(s, b, b.role === 'lurker' ? 4.2 : 5.5, dt)) {
-        // Tiba di node tujuan: berhenti 1.5-2.5 dtk di tiap sudut.
-        if (b.routeI < b.route.length && Math.random() < 0.3) b.waitT = rand(1.5, 2.5);
+      else {
+        const ri = b.routeI;
+        const done = followRoute(s, b, b.role === 'lurker' ? 4.2 : 5.5, dt);
+        // Baru tiba di node perantara: kadang berhenti 1,5-2,5 dtk di tiap sudut.
+        // (v1: cek ini jalan tiap tick saat bergerak, jadi bot merangkak
+        // ~0,1 m/dtk dan tak pernah bertemu — demo 60 dtk 0 tembakan.)
+        if (!done && b.routeI > ri && Math.random() < 0.3) b.waitT = rand(1.5, 2.5);
       }
       if (b.seenT > 0) b.state = 'engage';
       break;
     }
   }
 
+  // Anti-macet: bot patrol yang tak bergerak 2,5 dtk padahal punya rute
+  // (garis waypoint terhalang cover) melewati waypoint itu.
+  if (b.state === 'patrol' && b.waitT <= 0 && b.route.length > 0 &&
+      b.routeI < b.route.length) {
+    const moved = Math.hypot(b.x - (b._lx ?? b.x), b.z - (b._lz ?? b.z));
+    b._stuckT = moved < 0.001 ? (b._stuckT || 0) + dt : 0;
+    b._lx = b.x; b._lz = b.z;
+    if ((b._stuckT || 0) > 2.5) {
+      b._stuckT = 0; b.routeI++;
+      if (b.routeI >= b.route.length) b.route.length = 0;
+    }
+  }
+
   // 4. Plant/defuse dipicu dari patrol bila kondisi cocok (dicek round.js juga).
-  if (b.state === 'patrol' && s.phase === 'live') {
+  // Jalan juga di fase menu (demo attract mode: bot-vs-bot).
+  if (b.state === 'patrol' && (s.phase === 'live' || s.phase === 'menu')) {
     const site = siteOf(b.x, b.z);
     if (isAtkTeam && site >= 0 && s.bomb.state === 'carried' && s.bomb.carrier === b.id) {
       b.state = 'plant'; b.plantT = 0;
@@ -338,7 +351,7 @@ function decideMove(s, b, isAtkTeam) {
     b._site = site;
   } else {
     // Defender: 2-1-2 — dua di A, satu mid, dua di B.
-    const spots = [[-20, -14], [-24, -11], [0, 0], [20, -14], [24, -11]];
+    const spots = [[-20, -14], [-24, -11], [0, 4], [20, -14], [24, -11]];
     const sp = spots[b.id % 5];
     setRouteTo(s, b, sp[0], sp[1]);
     b.holdYaw = Math.atan2(-(0 - sp[0]), -(0 - sp[1]));

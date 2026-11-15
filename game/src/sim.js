@@ -5,7 +5,7 @@
 // Sim hanya menulis state; render & HUD membaca.
 import { CFG } from './config.js';
 import { tickPlayer, tickInteract } from './player.js';
-import { tickBot, tickBotHoldCheck, botHear } from './bots.js';
+import { tickBot, tickBotHoldCheck, botHear, spawnBots, botBuy } from './bots.js';
 import { tickNades, throwGrenade } from './grenades.js';
 import { tickReload, firePlayer, startReload } from './weapons.js';
 import { curWeapon } from './state.js';
@@ -31,7 +31,8 @@ export function tick(s, cmd, dt) {
     if (s.time - s.killfeed[i].t > 5) s.killfeed.splice(i, 1);
   }
 
-  if (s.phase === 'menu' || s.phase === 'matchend' || s.paused) return;
+  if (s.phase === 'menu') { tickDemo(s, dt); return; }
+  if (s.phase === 'matchend' || s.paused) return;
 
   // 1. Input -> pemain.
   tickPlayer(s, cmd, dt);
@@ -104,6 +105,76 @@ export function tick(s, cmd, dt) {
       }
     }
   }
+}
+
+// --- Demo attract mode (fase menu): bot-vs-bot penuh tanpa pemain ---
+// Jalan otomatis saat load (main.js selalu menjalankan stepFrame).
+// DEPLOY membuang state demo: onStart memanggil resetMatch + startMatch.
+function startDemo(s) {
+  spawnBots(s);
+  for (const b of s.bots) {
+    b.money = 4000; // demo: semua bot mampu beli rifle/SMG
+    botBuy(s, b);
+    b.hp = 100; b.alive = true;
+  }
+  s.player.alive = false; // bot musuh tidak membidik pemain saat demo
+  s.player.hp = 0;
+  s.bomb.state = 'carried'; s.bomb.timer = 0; s.mapLit = false;
+  const atk = s.bots.filter((b) => (s.playerSide === 'atk') === (b.team === 'you'));
+  const carrier = atk[Math.floor(Math.random() * atk.length)];
+  s.bomb.carrier = carrier.id; carrier.hasBomb = true;
+  s._demoOn = true;
+}
+
+function tickDemo(s, dt) {
+  if (!s._demoOn) startDemo(s);
+  // Bom terplant: hitung mundur, lalu "meledak" dan demo mulai dari nol.
+  if (s.bomb.state === 'planted') {
+    s.bomb.timer -= dt;
+    if (s.bomb.timer <= 0) {
+      emit(s, 'bombExplode', {});
+      startDemo(s);
+      return;
+    }
+  }
+  for (const b of s.bots) {
+    if (!b.alive) {
+      // Bot mati respawn 3 dtk kemudian supaya demo tidak pernah kosong.
+      b._demoRespawn = (b._demoRespawn || 0) + dt;
+      if (b._demoRespawn > 3) {
+        b._demoRespawn = 0;
+        b.hp = 100; b.alive = true; b.state = 'patrol';
+        b.route.length = 0; b.routeI = 0;
+        b.weapon.mag = CFG.WEAPONS[b.weapon.id].mag;
+        const atkTeam = (s.playerSide === 'atk') === (b.team === 'you');
+        b.x = atkTeam ? -29 : 29;
+        b.z = Math.random() * 6 - 3;
+        b.y = 0;
+        b.yaw = atkTeam ? -Math.PI / 2 : Math.PI / 2;
+      }
+      continue;
+    }
+    tickBot(s, b, dt);
+    tickBotHoldCheck(s, b);
+    if (b.state === 'plant' && b.plantT >= CFG.ROUND.plantTime) {
+      plantBomb(s, b, siteOf(b.x, b.z));
+      b.state = 'patrol'; b.plantT = 0;
+    }
+    if (b.state === 'defuse' &&
+        b.defuseT >= (b.hasKit ? CFG.ROUND.defuseKitTime : CFG.ROUND.defuseTime)) {
+      // Defuse demo: bom kembali carried, tanpa akhir ronde / skor.
+      s.bomb.state = 'carried'; s.mapLit = false;
+      emit(s, 'defused', { by: b.name });
+      b.state = 'patrol'; b.defuseT = 0;
+      const atk = s.bots.filter((o) => o.alive &&
+        (s.playerSide === 'atk') === (o.team === 'you'));
+      if (atk.length) {
+        const c = atk[Math.floor(Math.random() * atk.length)];
+        s.bomb.carrier = c.id; c.hasBomb = true;
+      }
+    }
+  }
+  tickNades(s, dt);
 }
 
 // Event suara langkah -> AI hearing. Dipanggil main.js setelah konsumsi events.
