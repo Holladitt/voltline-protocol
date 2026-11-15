@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VOLTLINE PROTOCOL — Tactical FPS</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #0b1026;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif; color: #F5F5F0; }
+  #game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  .panel { background: rgba(8, 12, 28, 0.72); border: 1px solid rgba(245,245,240,0.18); border-radius: 6px; }
+  .atk { color: #FF8A1E; } .def { color: #3FA9F5; }
+  /* ---------- HUD ---------- */
+  #hud { position: fixed; inset: 0; pointer-events: none; display: none; z-index: 5; }
+  #crosshair { position: absolute; left: 50%; top: 50%; width: 0; height: 0; --gap: 8px; }
+  #crosshair i { position: absolute; background: #F5F5F0; box-shadow: 0 0 2px #000; }
+  #crosshair i:nth-child(1) { left: calc(-1px); top: calc(-14px - var(--gap)); width: 2px; height: 10px; }
+  #crosshair i:nth-child(2) { left: calc(-1px); top: calc(4px + var(--gap)); width: 2px; height: 10px; }
+  #crosshair i:nth-child(3) { left: calc(-14px - var(--gap)); top: calc(-1px); width: 10px; height: 2px; }
+  #crosshair i:nth-child(4) { left: calc(4px + var(--gap)); top: calc(-1px); width: 10px; height: 2px; }
+  #crosshair b { position: absolute; left: -1px; top: -1px; width: 2px; height: 2px; background: #F5F5F0; }
+  #hitmark { position: absolute; left: 50%; top: 50%; width: 26px; height: 26px; margin: -13px 0 0 -13px; display: none; }
+  #hitmark:before, #hitmark:after { content: ""; position: absolute; left: 12px; top: 0; width: 2px; height: 26px; background: #fff; }
+  #hitmark:before { transform: rotate(45deg); } #hitmark:after { transform: rotate(-45deg); }
+  #hitmark.head:before, #hitmark.head:after { background: #FFD21A; }
+  #hitmark.kill:before, #hitmark.kill:after { background: #FF3B30; height: 34px; top: -4px; }
+  #dmgdir { position: absolute; left: 50%; top: 50%; width: 120px; height: 120px; margin: -60px 0 0 -60px;
+    border-top: 6px solid #FF3B30; border-radius: 50%; opacity: 0; }
+  #vignette { position: fixed; inset: 0; pointer-events: none; opacity: 0;
+    box-shadow: inset 0 0 120px 40px rgba(255, 59, 48, 0.55); }
+  #flashov { position: fixed; inset: 0; background: #fff; opacity: 0; pointer-events: none; }
+  #scope { position: fixed; inset: 0; pointer-events: none; display: none;
+    background: radial-gradient(circle at center, transparent 34%, rgba(0,0,0,0.97) 36%); }
+  #scope:after { content: "+"; position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%);
+    font-size: 28px; color: rgba(245,245,240,0.8); }
+  .hudBL { position: absolute; left: 18px; bottom: 16px; padding: 10px 14px; min-width: 240px; }
+  #hp { font-size: 44px; font-weight: 800; line-height: 1; }
+  #hpbarWrap { width: 180px; height: 8px; background: #222; border-radius: 4px; margin: 6px 0; }
+  #hpbar { height: 100%; background: #7BE495; border-radius: 4px; width: 100%; }
+  #armor, #money { font-size: 18px; } #money { color: #7BE495; font-weight: 700; }
+  .hudBR { position: absolute; right: 18px; bottom: 16px; padding: 10px 14px; text-align: right; min-width: 260px; }
+  #wname { font-size: 20px; font-weight: 800; }
+  #ammoMag { font-size: 56px; font-weight: 800; line-height: 1; }
+  #ammoRes { font-size: 24px; color: #aaa; }
+  #reloadHint { color: #FF3B30; font-weight: 700; min-height: 20px; }
+  #slots { font-size: 13px; color: #ccc; margin-top: 4px; }
+  #slots b.on { color: #FF8A1E; }
+  #bombTag { color: #FFD21A; font-weight: 700; font-size: 14px; }
+  .hudTC { position: absolute; left: 50%; top: 12px; transform: translateX(-50%); text-align: center; padding: 8px 18px; }
+  #timer { font-size: 36px; font-weight: 800; line-height: 1; }
+  #phase { font-size: 13px; letter-spacing: 1px; }
+  #scoreYou { font-size: 16px; font-weight: 700; margin-top: 2px; }
+  #scoreLine { font-size: 12px; color: #bbb; }
+  .hudTL { position: absolute; left: 18px; top: 12px; max-width: 320px; }
+  #killfeed { font-size: 14px; line-height: 1.5; padding: 8px 10px; }
+  #killfeed i { color: #FF3B30; font-style: normal; font-weight: 700; }
+  #teamYou, #teamFoe { font-size: 13px; padding: 4px 10px; margin-top: 4px; }
+  .hudTR { position: absolute; right: 18px; top: 12px; text-align: right; }
+  #minimap { width: 160px; height: 160px; border: 1px solid rgba(245,245,240,0.4); background: rgba(8,12,28,0.75); }
+  #compass { font-size: 12px; color: #ddd; margin-top: 4px; }
+  #prompt { position: absolute; left: 50%; bottom: 170px; transform: translateX(-50%);
+    padding: 10px 22px; background: rgba(60, 30, 0, 0.85); border: 1px solid #FF8A1E; text-align: center; }
+  #promptTxt { font-size: 18px; font-weight: 800; color: #FFD21A; }
+  #promptBarWrap { width: 220px; height: 6px; background: #333; margin-top: 6px; }
+  #promptBar { height: 100%; width: 0%; background: #FFD21A; }
+  #spectate { position: absolute; left: 50%; bottom: 120px; transform: translateX(-50%);
+    padding: 8px 16px; font-size: 15px; }
+  /* ---------- Buy menu ---------- */
+  #buymenu { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 760px; max-width: 94vw;
+    padding: 18px 22px; background: rgba(8, 12, 28, 0.92); z-index: 8; pointer-events: auto; display: none; }
+  #buymenu h2 { font-size: 22px; } #buyTimer { color: #FFD21A; font-weight: 700; }
+  #buyItems { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 12px 0; }
+  .buyItem { padding: 10px 12px; border: 1px solid rgba(245,245,240,0.25); border-radius: 5px; cursor: pointer; }
+  .buyItem:hover { border-color: #FF8A1E; }
+  .buyItem.cant { opacity: 0.45; } .buyItem.cant i { color: #FF3B30; }
+  .buyItem b { display: block; font-size: 16px; } .buyItem span { font-size: 12px; color: #bbb; }
+  .buyItem i { float: right; font-style: normal; font-weight: 800; color: #7BE495; font-size: 16px; }
+  #buyMoney { font-size: 22px; color: #7BE495; font-weight: 800; }
+  #buyMsg { color: #FF3B30; font-weight: 700; min-height: 20px; }
+  button { background: #FF8A1E; color: #111; border: none; font-weight: 800; padding: 10px 18px;
+    font-size: 15px; border-radius: 5px; cursor: pointer; }
+  button:hover { background: #FFD21A; }
+  /* ---------- Menu utama ---------- */
+  #menu { position: fixed; inset: 0; z-index: 10; display: flex; align-items: center; justify-content: center;
+    background: linear-gradient(180deg, rgba(11,16,38,0.55), rgba(11,16,38,0.88)); }
+  .menuBox { width: 980px; max-width: 96vw; padding: 26px 30px; background: rgba(8,12,28,0.85);
+    border: 1px solid rgba(255,210,26,0.5); border-radius: 10px; }
+  .menuBox h1 { font-size: 52px; letter-spacing: 2px; color: #FFD21A; text-shadow: 0 0 18px rgba(255,210,26,0.5); }
+  .menuBox h1 span { color: #F5F5F0; }
+  .tagline { font-size: 17px; color: #ccc; margin: 4px 0 16px; }
+  .cols { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
+  .col { padding: 12px 14px; background: rgba(255,255,255,0.05); border-radius: 6px; font-size: 14px; line-height: 1.65; }
+  .col h3 { color: #FF8A1E; font-size: 15px; margin-bottom: 6px; letter-spacing: 1px; }
+  .col b { color: #FFD21A; }
+  #startBtn { font-size: 22px; padding: 14px 34px; margin-top: 18px; }
+  .diffRow { margin-top: 14px; font-size: 14px; }
+  .diffRow button { background: #222; color: #ddd; padding: 7px 14px; margin-right: 6px; }
+  .diffRow button.sel { background: #FF8A1E; color: #111; }
+  #menuScore, #menuDiff { font-size: 13px; color: #bbb; margin-top: 8px; }
+  .menuFoot { font-size: 12px; color: #888; margin-top: 12px; }
+  #muteBtn { position: fixed; right: 14px; bottom: 14px; z-index: 11; background: #222; color: #fff; padding: 6px 10px; }
+  #volSlider { position: fixed; right: 64px; bottom: 20px; z-index: 11; width: 110px; }
+  /* ---------- Overlay akhir ---------- */
+  #roundend, #matchend { position: fixed; left: 50%; top: 50%; transform: translate(-50%,-50%);
+    text-align: center; padding: 26px 40px; z-index: 9; display: none; background: rgba(8,12,28,0.88); }
+  #roundTitle, #matchTitle { font-size: 44px; font-weight: 900; }
+  #roundReason, #roundStats, #matchScore, #matchMvp { font-size: 17px; margin-top: 8px; }
+  #nextRound { color: #FFD21A; margin-top: 10px; font-weight: 700; }
+  #matchTable { margin: 14px auto 0; border-collapse: collapse; font-size: 15px; }
+  #matchTable td, #matchTable th { padding: 4px 14px; border-bottom: 1px solid #333; text-align: left; }
+  #matchend button { margin: 14px 6px 0; }
+</style>
+<script type="importmap">
+{ "imports": { "three": "./vendor/three/three.module.min.js" } }
+</script>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="vignette"></div>
+<div id="flashov"></div>
+
+<!-- HUD -->
+<div id="hud">
+  <div id="crosshair"><i></i><i></i><i></i><i></i><b></b></div>
+  <div id="hitmark"></div>
+  <div id="dmgdir"></div>
+  <div id="scope"></div>
+  <div class="hudBL panel">
+    <div><span id="hp">100</span> <span style="font-size:14px">HP</span></div>
+    <div id="hpbarWrap"><div id="hpbar"></div></div>
+    <div id="armor">—</div>
+    <div>UANG <span id="money">$800</span></div>
+  </div>
+  <div class="hudBR panel">
+    <div id="wname">PERCIK</div>
+    <div><span id="ammoMag">12</span> <span id="ammoRes">∞</span></div>
+    <div id="reloadHint"></div>
+    <div id="slots"><b id="slot1">—</b> · <b id="slot2">PERCIK</b><br><span id="slot3"></span><br><span id="bombTag"></span></div>
+  </div>
+  <div class="hudTC panel">
+    <div id="timer">1:40</div>
+    <div id="phase">RONDE 1 — BUY PHASE</div>
+    <div id="scoreYou">ARUS 0 — 0 PEMUTUS</div>
+    <div id="scoreLine"></div>
+  </div>
+  <div class="hudTL">
+    <div id="killfeed" class="panel"></div>
+    <div id="teamYou" class="panel"></div>
+    <div id="teamFoe" class="panel"></div>
+  </div>
+  <div class="hudTR">
+    <canvas id="minimap" width="160" height="160"></canvas>
+    <div id="compass" class="panel"></div>
+  </div>
+  <div id="prompt" style="display:none"><div id="promptTxt"></div><div id="promptBarWrap"><div id="promptBar"></div></div></div>
+  <div id="spectate" class="panel" style="display:none"><span id="specText"></span></div>
+</div>
+
+<!-- Buy menu -->
+<div id="buymenu">
+  <h2>BUY MENU — <span id="buyTimer">BUY — 0:15</span></h2>
+  <div>Uang: <span id="buyMoney">$800</span> · Klik barang untuk membeli · B tutup · AUTO-BUY bila malas</div>
+  <div id="buyItems"></div>
+  <div id="buyMsg"></div>
+  <button id="autoBuyBtn">AUTO-BUY</button>
+  <button id="closeBuyBtn" style="background:#333;color:#fff">TUTUP (B)</button>
+</div>
+
+<!-- Menu utama: poster penjelas satu layar -->
+<div id="menu">
+  <div class="menuBox">
+    <h1>VOLTLINE <span>PROTOCOL</span></h1>
+    <div class="tagline">Lima ronde. Satu sirkuit. Jangan putus arusnya. — FPS taktis 5v5 melawan bot di atap stasiun relay <b>SIRKUIT KACA</b>.</div>
+    <div class="cols">
+      <div class="col"><h3>CARA MAIN</h3>
+        <b>WASD</b> gerak · <b>Mouse</b> aim · <b>Klik</b> tembak · <b>R</b> reload<br>
+        <b>Shift</b> jalan pelan · <b>C</b> crouch (senyap) · <b>Spasi</b> lompat<br>
+        <b>E</b> tahan: plant / defuse bom · <b>1/2</b> ganti senjata<br>
+        <b>4</b> smoke · <b>5</b> flash · <b>B</b> buy menu · <b>M</b> mute · <b>Q</b> ganti spectate</div>
+      <div class="col"><h3>MISI</h3>
+        Penyerang <b class="atk">PEMUTUS SIRKUIT</b> plant bom di <b>RELAY UTARA (A)</b> atau <b>GARDU KACA (B)</b>, lalu jaga sampai meledak (35 dtk).<br>
+        Bertahan <b class="def">PENJAGA ARUS</b> menggagalkan plant atau defuse sebelum ledakan.<br>
+        Menang ronde = <b>$3.250</b> · kalah = <b>$1.900</b> · kill = <b>$300</b>.<br>
+        First to <b>7</b>, maks 12 ronde, ganti sisi setelah ronde 6.</div>
+      <div class="col"><h3>ARSENAL</h3>
+        <b>PETIR-9</b> rifle $2.700 · <b>JARUM VOLT</b> DMR $3.100<br>
+        <b>SENGAT-9</b> SMG $1.500 · <b>BUSUR VOLT</b> sniper $4.750<br>
+        <b>SENJA-12</b> shotgun $1.100 · <b>PERCIK</b> pistol gratis<br>
+        <b>KABUT KACA</b> smoke $300 · <b>SENTAK</b> flash $300<br>
+        Headshot sakit berkali lipat. Berhenti, baru tembak — spread membesar saat lari.</div>
+    </div>
+    <button id="startBtn">▶ DEPLOY — START MATCH</button>
+    <div class="diffRow">Kesulitan bot:
+      <button data-diff="recruit">RECRUIT</button>
+      <button data-diff="veteran" class="sel">VETERAN</button>
+      <button data-diff="elite">ELITE</button>
+    </div>
+    <div id="menuScore"></div>
+    <div id="menuDiff"></div>
+    <div class="menuFoot">Offline · Single-player vs AI bots · three.js 0.187.0 · Lantai kaca Koridor Volt tembus pandang — lihat bayangan musuh sebelum bertemu. Lampu map jadi kuning volt saat bom ter-plant.</div>
+  </div>
+</div>
+
+<!-- Akhir ronde -->
+<div id="roundend" class="panel">
+  <div id="roundTitle">RONDE MENANG</div>
+  <div id="roundReason"></div>
+  <div id="roundStats"></div>
+  <div id="nextRound"></div>
+</div>
+
+<!-- Akhir match -->
+<div id="matchend" class="panel">
+  <div id="matchTitle">VICTORY</div>
+  <div id="matchScore"></div>
+  <div id="matchMvp"></div>
+  <table id="matchTable"></table>
+  <div><button id="rematchBtn">REMATCH</button><button id="menuBtn" style="background:#333;color:#fff">MAIN MENU</button></div>
+</div>
+
+<button id="muteBtn">🔊</button>
+<input id="volSlider" type="range" min="0" max="100" value="70" title="Volume">
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
