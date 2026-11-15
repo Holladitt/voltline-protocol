@@ -1,7 +1,7 @@
 // VOLTLINE PROTOCOL — weapons.js
-// Senjata: data dari config, tembakan pemain (hitscan + spread + recoil),
-// reload, ganti slot, dan tembakan bot (akurasi berbasis jarak & kesulitan).
-// Spread: diam < jalan (2.5-4x) < crouch -20-30%; 0.25 dtk settle setelah berhenti.
+// Weapons: data from config, player fire (hitscan + spread + recoil),
+// reload, slot switching, and bot fire (accuracy by range & difficulty).
+// Spread: still < moving (2.5-4x) < crouch -20-30%; 0.25 s settle after stopping.
 import { CFG } from './config.js';
 import { rayShoot, calcDamage, applyDamage } from './combat.js';
 import { hasLOS } from './map.js';
@@ -9,7 +9,7 @@ import { curWeapon, emit, newWeaponState } from './state.js';
 
 const D2R = Math.PI / 180;
 
-// Spread efektif (derajat) untuk senjata w pada kondisi gerak tertentu.
+// Effective spread (degrees) for weapon w under a given movement state.
 export function spreadDeg(w, moveMag, crouch, settleT, bloom) {
   let sp = w.spread[0];
   if (moveMag > 0.5) sp = w.spread[1];
@@ -18,8 +18,8 @@ export function spreadDeg(w, moveMag, crouch, settleT, bloom) {
   return sp + bloom;
 }
 
-// Arah tembak dari yaw/pitch + deviasi acak dalam kerucut spread (derajat).
-// Tulis ke out {x,y,z} — tanpa alokasi.
+// Fire direction from yaw/pitch + random deviation inside the spread cone (degrees).
+// Writes to out {x,y,z} — no allocation.
 export function aimDir(yaw, pitch, spread, out) {
   const a = (Math.random() - 0.5) * 2 * spread * D2R;
   const b = (Math.random() - 0.5) * 2 * spread * D2R;
@@ -30,16 +30,16 @@ export function aimDir(yaw, pitch, spread, out) {
   return out;
 }
 const _dir = { x: 0, y: 0, z: 0 };
-const _foes = []; // scratch target list, dipakai ulang tiap tembakan
+const _foes = []; // scratch target list, reused every shot
 
-// Bisakah senjata menembak sekarang (fire rate, mag, reload)?
+// Can the weapon fire right now (fire rate, mag, reload)?
 export function canFire(ws, now) {
   const w = CFG.WEAPONS[ws.id];
   if (ws.reloading > 0 || ws.mag <= 0) return false;
   return now - ws.lastShot >= 60 / w.rpm;
 }
 
-// Satu peluru pemain. targets = bot musuh yang hidup. Kembalikan 'shot'|'dry'|'no'.
+// One player bullet. targets = living enemy bots. Returns 'shot'|'dry'|'no'.
 export function firePlayer(s, now) {
   const p = s.player;
   const ws = curWeapon(s);
@@ -65,7 +65,7 @@ export function firePlayer(s, now) {
     emit(s, 'tracer', { x0: p.x, y0: eyeY, z0: p.z, x1: hx, y1: hy, z1: hz, foe: false });
     if (r.ent) {
       const dmg = calcDamage(w, r.dist, r.head, r.ent);
-      r.ent._phits = (r.ent._phits || 0) + 1; r.ent._phitsT = s.time; // hit pemain ke-2 = teman berhenti
+      r.ent._phits = (r.ent._phits || 0) + 1; r.ent._phitsT = s.time; // 2nd player hit = teammates stop
       p.dmg += dmg; totalDmg += dmg;
       const died = applyDamage(s, r.ent, dmg, p, r.head, ws.id);
       hitAny = true; hitHead = hitHead || r.head; killed = killed || died;
@@ -83,8 +83,8 @@ export function firePlayer(s, now) {
   return 'shot';
 }
 
-// Tembakan satu bot ke target (pemain atau bot). Akurasi = kesulitan x jarak x gerak.
-// Bot membidik dengan error sudut; raycast yang menentukan kena/tidak — tanpa wallhack.
+// One bot shot at a target (player or bot). Accuracy = difficulty x range x movement.
+// Bots aim with angular error; the raycast decides hit or miss — no wallhack.
 export function fireBot(s, b, target, now) {
   const ws = b.weapon;
   const w = CFG.WEAPONS[ws.id];
@@ -94,15 +94,15 @@ export function fireBot(s, b, target, now) {
   const d = CFG.DIFF[s.diff];
   const dx = target.x - b.x, dz = target.z - b.z;
   const dist = Math.hypot(dx, dz);
-  // Akurasi dasar turun 12% tiap +10 m, -18% bila bot bergerak.
+  // Base accuracy drops 12% per +10 m, -18% while the bot moves.
   let acc = d.acc * Math.max(0.15, 1 - 0.12 * Math.max(0, (dist - 15) / 10));
   if (b.moving) acc *= 0.82;
   const baseSpread = w.spread[0] * d.spread;
-  // Error sudut: makin kecil acc makin besar error. 1 sigma ~ (1-acc) * 2.2 derajat.
+  // Angular error: lower acc means bigger error. 1 sigma ~ (1-acc) * 2.2 degrees.
   const err = (1 - acc) * 2.4 + baseSpread;
   const eyeY = b.y + (b.crouch ? 1.12 : 1.55);
   const ty = target.y + (target.crouch ? 0.9 : 1.35);
-  // Bidik kepala dengan peluang = headshot share (cap per kesulitan).
+  // Aim for the head with probability = headshot share (cap per difficulty).
   const aimHead = Math.random() < d.hs;
   const aimY = aimHead ? target.y + (target.crouch ? 1.0 : 1.6) : ty;
   const yaw = Math.atan2(-(target.x - b.x), -(target.z - b.z));
@@ -133,7 +133,7 @@ export function fireBot(s, b, target, now) {
   return hitAny;
 }
 
-// Reload pemain: shotgun per-shell, sisanya sekali jalan.
+// Player reload: shotgun per-shell, everything else in one go.
 export function startReload(s) {
   const ws = curWeapon(s);
   if (!ws || ws.reloading > 0 || ws.mag >= CFG.WEAPONS[ws.id].mag) return false;
@@ -149,7 +149,7 @@ export function startReloadBot(s, b) {
   ws.reloading = w.reload; ws.reloadT = w.reload;
   emit(s, 'reloadBot', { id: b.id, dist: Math.hypot(b.x - s.player.x, b.z - s.player.z) });
 }
-// Majukan timer reload; isi magasin saat selesai.
+// Advance the reload timer; fill the magazine when done.
 export function tickReload(ws, dt) {
   if (ws.reloading <= 0) return;
   ws.reloading -= dt;
@@ -179,8 +179,8 @@ export function giveBotWeapon(b, id) {
   b.weaponId = id;
 }
 
-// Pisau taktis (slot 3): ayunan jarak dekat, damage 40, cooldown 0,35 dtk.
-// Kena bila musuh dalam 2,2 m di depan (kerucut ±26°) + garis pandang bersih.
+// Tactical knife (slot 3): close-range swing, 40 damage, 0.35 s cooldown.
+// Hits when an enemy is within 2.2 m ahead (±26° cone) + clear line of sight.
 export function swingMelee(s, now) {
   const p = s.player;
   if (now - (p.meleeLast || -9) < CFG.MELEE.cd) return 'no';
@@ -199,7 +199,7 @@ export function swingMelee(s, now) {
     if (d < bd) { bd = d; best = b; }
   }
   if (!best) return 'swing';
-  const died = applyDamage(s, best, CFG.MELEE.dmg, p, false, 'pisau');
+  const died = applyDamage(s, best, CFG.MELEE.dmg, p, false, 'knife');
   p.dmg += CFG.MELEE.dmg;
   p.hitmarkT = 0.25; p.hitmarkHead = false; p.hitmarkKill = died;
   emit(s, 'hit', { x: best.x, y: eyeY, z: best.z, head: false, dmg: CFG.MELEE.dmg, killed: died });

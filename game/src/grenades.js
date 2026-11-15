@@ -1,12 +1,12 @@
 // VOLTLINE PROTOCOL — grenades.js
-// KABUT KACA (smoke, 18 dtk, radius 3.2 m) memblokir garis pandang bot &
-// pemain sepenuhnya; SENTAK (flash) membutakan dalam 25 m / kerucut 120°.
-// Granat memantul sederhana pada kotak map; tanpa alokasi di hot loop.
+// GLASS FOG (smoke, 18 s, radius 3.2 m) fully blocks line of sight for bots &
+// players; JOLT (flash) blinds within 25 m / 120° cone.
+// Grenades bounce simply off map boxes; no allocation in the hot loop.
 import { CFG } from './config.js';
 import { collides, hasLOS } from './map.js';
 import { emit } from './state.js';
 
-// Lempar granat dari entitas (pemain/bot): posisi mata + arah pandang.
+// Throw a grenade from an entity (player/bot): eye position + view direction.
 export function throwGrenade(s, owner, kind, ox, oy, oz, yaw, pitch) {
   const speed = 13;
   s.nades.push({
@@ -19,7 +19,7 @@ export function throwGrenade(s, owner, kind, ox, oy, oz, yaw, pitch) {
   emit(s, 'throw', { kind, own: owner === s.player });
 }
 
-// Fisika granat: gravitasi, pantul per-sumbu pada kotak (restitusi 0.35).
+// Grenade physics: gravity, per-axis bounce off boxes (restitution 0.35).
 export function tickNades(s, dt) {
   for (let i = s.nades.length - 1; i >= 0; i--) {
     const n = s.nades[i];
@@ -36,7 +36,7 @@ export function tickNades(s, dt) {
       s.nades.splice(i, 1);
     }
   }
-  // Asap menua.
+  // Smoke ages.
   for (let i = s.smokes.length - 1; i >= 0; i--) {
     s.smokes[i].t += dt;
     if (s.smokes[i].t >= s.smokes[i].dur) s.smokes.splice(i, 1);
@@ -54,8 +54,8 @@ function detonate(s, n) {
   }
 }
 
-// Flash: siapa pun yang melihat ledakan (LOS + dalam kerucut pandang 120°)
-// dalam 25 m kena buta penuh 2.5 dtk + pulih 1.5 dtk. Skala dengan jarak.
+// Flash: anyone seeing the blast (LOS + inside the 120° view cone)
+// within 25 m takes full blind 2.5 s + 1.5 s recovery. Scales with distance.
 export function applyFlash(s, x, y, z) {
   const g = CFG.GRENADES.flash;
   const all = [s.player, ...s.bots];
@@ -65,7 +65,7 @@ export function applyFlash(s, x, y, z) {
     const dist = Math.hypot(dx, dy, dz);
     if (dist > g.range) continue;
     if (!hasLOS(e.x, e.y + 1.4, e.z, x, y, z)) continue;
-    // Sudut pandang: korban harus menghadap ke arah ledakan.
+    // View angle: the victim must be facing the blast.
     const fx = -Math.sin(e.yaw), fz = -Math.cos(e.yaw);
     const dot = (dx * fx + dz * fz) / (Math.max(0.01, Math.hypot(dx, dz)));
     if (dot < Math.cos((g.cone / 2) * Math.PI / 180)) continue;
@@ -76,10 +76,10 @@ export function applyFlash(s, x, y, z) {
   }
 }
 
-// Apakah segmen (x1,y1,z1)-(x2,y2,z2) melewati asap aktif? (blokir penglihatan)
+// Does segment (x1,y1,z1)-(x2,y2,z2) pass through active smoke? (blocks vision)
 export function segmentInSmoke(s, x1, y1, z1, x2, y2, z2) {
   for (const sm of s.smokes) {
-    // Jarak titik-titik sampel segmen ke pusat asap (8 sampel, tanpa alokasi).
+    // Distance from segment sample points to the smoke center (8 samples, no allocation).
     for (let i = 0; i <= 8; i++) {
       const t = i / 8;
       const px = x1 + (x2 - x1) * t, py = y1 + (y2 - y1) * t, pz = z1 + (z2 - z1) * t;
@@ -90,7 +90,7 @@ export function segmentInSmoke(s, x1, y1, z1, x2, y2, z2) {
   return false;
 }
 
-// Titik berada di dalam asap?
+// Is a point inside smoke?
 export function pointInSmoke(s, x, y, z) {
   for (const sm of s.smokes) {
     const dx = x - sm.x, dy = y - sm.y, dz = z - sm.z;

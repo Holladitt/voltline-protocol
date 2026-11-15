@@ -1,8 +1,8 @@
 // VOLTLINE PROTOCOL — audio.js
-// Semua suara disintesis WebAudio: satu AudioContext (gesture pertama),
-// satu master gain, satu noise buffer putih 1 dtk dipakai ulang.
-// Tanpa file audio. Setiap cue audio punya padanan visual di HUD.
-// Event dikonsumsi dari state.events oleh main.js (consumeEvents).
+// All sounds are synthesized WebAudio: one AudioContext (first gesture),
+// one master gain, one reused 1 s white-noise buffer.
+// No audio files. Every audio cue has a visual counterpart in the HUD.
+// Events are consumed from state.events by main.js (consumeEvents).
 let ctx = null, master = null, noiseBuf = null, muted = false, vol = 0.7;
 let windSrc = null, windGain = null;
 
@@ -31,8 +31,8 @@ function startWind() {
 }
 export function setAiming(ads) { if (windGain) windGain.gain.value = ads ? 0 : 0.05; }
 
-// Util: noise burst lewat filter + envelope. Tanpa alokasi per-frame
-// (node dibuat per event suara — event, bukan per frame render).
+// Util: noise burst through a filter + envelope. No per-frame allocation
+// (nodes are created per sound event — event, not per render frame).
 function burst(dur, filterType, freq, gain, when = 0) {
   if (!ctx || muted) return;
   const t = ctx.currentTime + when;
@@ -56,13 +56,13 @@ function tone(freq, dur, type, gain, when = 0, slideTo = 0) {
   o.start(t); o.stop(t + dur + 0.02);
 }
 function panFor(x, z, px, pz, yaw) {
-  // Stereo pan dari posisi relatif terhadap arah pandang pemain.
+  // Stereo pan from position relative to the player's view direction.
   const dx = x - px, dz = z - pz;
   const rx = dx * Math.cos(yaw) - dz * Math.sin(yaw);
   return Math.max(-0.9, Math.min(0.9, rx / 12));
 }
 
-// Sidik jari tiap senjata (jarak didengar: rifle 35 m, pistol/SMG 25 m, sniper 45 m).
+// Sound signature per weapon (audible range: rifle 35 m, pistol/SMG 25 m, sniper 45 m).
 const SHOT_SIG = {
   percik: () => { burst(0.09, 'highpass', 1800, 0.5); burst(0.05, 'lowpass', 400, 0.3); },
   petir9: () => { burst(0.16, 'lowpass', 900, 0.8); burst(0.02, 'highpass', 2500, 0.6); tone(70, 0.08, 'sine', 0.5); },
@@ -76,7 +76,7 @@ export function playShot(id, own, dist) {
   if (!ctx) return;
   const sig = SHOT_SIG[id] || SHOT_SIG.petir9;
   if (own) { sig(); return; }
-  // Tembakan bot: atenuasi jarak + makin tumpul (low-pass menutup).
+  // Bot shots: distance attenuation + increasingly muffled (low-pass closes).
   const att = 1 / (1 + (dist || 10) / 10);
   if (att < 0.08) return;
   const t = ctx.currentTime;
@@ -121,7 +121,7 @@ export function playExplosion() {
   burst(0.8, 'lowpass', 120, 1.0);
   tone(150, 0.6, 'sine', 0.8, 0, 40);
   burst(1.2, 'lowpass', 200, 0.3, 0.3);
-  tone(8000, 0.5, 'sine', 0.05, 0.1); // telinga berdenging
+  tone(8000, 0.5, 'sine', 0.05, 0.1); // ears ringing
 }
 export function playDefuseOk() {
   tone(660, 0.12, 'sine', 0.35); tone(880, 0.12, 'sine', 0.35, 0.12);
@@ -135,7 +135,7 @@ export function playFlash() { burst(0.15, 'highpass', 4000, 0.4); }
 export function playSmoke() { burst(0.5, 'lowpass', 300, 0.3); }
 export function playSpotted() { tone(700, 0.1, 'sine', 0.25); tone(900, 0.12, 'sine', 0.25, 0.1); }
 
-// Konsumsi satu event dari state.events. Dipanggil main.js tiap frame.
+// Consume one event from state.events. Called by main.js every frame.
 export function consumeAudioEvent(s, ev) {
   if (!ctx) return;
   const p = s.player;
@@ -151,7 +151,7 @@ export function consumeAudioEvent(s, ev) {
     case 'defused': playDefuseOk(); break;
     case 'flash': playFlash(); break;
     case 'smoke': playSmoke(); break;
-    case 'kill': if (ev.attacker === 'KAMU') playHitmark(ev.head, true); break;
+    case 'kill': if (ev.attacker === 'YOU') playHitmark(ev.head, true); break;
     case 'roundEnd': playStinger(ev.winner === 'you'); break;
     case 'playerHit': tone(200, 0.08, 'sine', 0.3); break;
     case 'swing': burst(0.12, 'bandpass', 900, 0.4); break;

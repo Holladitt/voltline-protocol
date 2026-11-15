@@ -1,8 +1,8 @@
 // VOLTLINE PROTOCOL — round.js
-// Alur ronde: buy 15 -> freeze 5 -> live 100 -> end 6. Plant 3 dtk (E),
-// defuse 5/2.5 dtk, bom meledak 35 dtk setelah plant, timeout tanpa plant =
-// defender menang. First-to-7, maks 12 ronde, paruh 6, OT unggul 2 (maks 3),
-// lalu seri. Sisi bertukar setelah ronde 6 (intermission 8 dtk).
+// Round flow: buy 15 -> freeze 5 -> live 100 -> end 6. Plant 3 s (E),
+// defuse 5/2.5 s, bomb explodes 35 s after plant, timeout without plant =
+// defenders win. First-to-7, max 12 rounds, halftime at 6, OT win by 2 (max 3),
+// then a draw. Sides swap after round 6 (intermission 8 s).
 import { CFG, SITE_NAMES } from './config.js';
 import { resetRound, emit, radio } from './state.js';
 import { spawnBots, botBuy } from './bots.js';
@@ -25,12 +25,12 @@ export function startRound(s) {
   resetRound(s);
   spawnPlayer(s);
   spawnBots(s);
-  // Pembawa bom: bila pemain menyerang, pemain yang membawa; bila bertahan,
-  // satu bot penyerang acak.
+  // Bomb carrier: when the player attacks, the player carries it; when defending,
+  // a random attacking bot.
   const atkBots = s.bots.filter((b) => (s.playerSide === 'atk') === (b.team === 'you'));
   if (s.playerSide === 'atk') {
     s.player.hasBomb = true;
-    s.bomb.carrier = -1; // -1 = pemain
+    s.bomb.carrier = -1; // -1 = player
   } else {
     s.player.hasBomb = false;
     const carrier = atkBots[Math.floor(Math.random() * atkBots.length)];
@@ -50,7 +50,7 @@ function aliveCount(s, team) {
   return n;
 }
 
-// Dipanggil tiap tick oleh sim.js; mengatur transisi fase & kondisi akhir.
+// Called every tick by sim.js; drives phase transitions & end conditions.
 export function tickRound(s, dt) {
   if (s.phase === 'menu' || s.phase === 'matchend') return;
   s.phaseT -= dt;
@@ -65,7 +65,7 @@ export function tickRound(s, dt) {
   } else if (s.phase === 'intermission' && s.phaseT <= 0) {
     startRound(s);
   } else if (s.phase === 'live') {
-    // Timer bom menggantikan timer ronde setelah plant.
+    // The bomb timer replaces the round timer after plant.
     if (b.state === 'planted') {
       b.timer -= dt;
       b.beepT -= dt;
@@ -73,35 +73,35 @@ export function tickRound(s, dt) {
         emit(s, 'bombBeep', { urgent: b.timer < 10 });
         b.beepT = b.timer < 5 ? 0.25 : b.timer < 10 ? 0.5 : 1.0;
       }
-      if (b.timer <= 0) { emit(s, 'bombExplode', {}); return endRound(s, s.playerSide === 'atk' ? 'you' : 'foe', 'BOM MELEDAK'); }
+      if (b.timer <= 0) { emit(s, 'bombExplode', {}); return endRound(s, s.playerSide === 'atk' ? 'you' : 'foe', 'BOMB DETONATED'); }
     } else if (s.phaseT <= 0) {
-      return endRound(s, s.playerSide === 'atk' ? 'foe' : 'you', 'WAKTU HABIS — TANPA PLANT');
+      return endRound(s, s.playerSide === 'atk' ? 'foe' : 'you', 'TIME UP — NO PLANT');
     }
-    // Eliminasi. Setelah plant, ronde hanya berakhir oleh ledakan/defuse,
-    // atau bila seluruh defender habis (penyerang menang).
+    // Elimination. After plant, the round ends only by explosion/defuse,
+    // or when all defenders are gone (attackers win).
     const atkTeam = s.playerSide === 'atk' ? 'you' : 'foe';
     const defTeam = atkTeam === 'you' ? 'foe' : 'you';
     const atkAlive = aliveCount(s, atkTeam), defAlive = aliveCount(s, defTeam);
     if (b.state === 'planted') {
-      if (defAlive === 0) return endRound(s, atkTeam, 'DEFENDER HABIS — BOM MELEDAK');
-      // Penyerang habis tapi bom terplant: defender harus defuse sebelum timer.
+      if (defAlive === 0) return endRound(s, atkTeam, 'DEFENDERS ELIMINATED — BOMB DETONATES');
+      // Attackers eliminated but bomb planted: defenders must defuse before the timer.
     } else {
-      if (atkAlive === 0) return endRound(s, defTeam, 'PENYERANG HABIS');
-      if (defAlive === 0) return endRound(s, atkTeam, 'DEFENDER HABIS');
+      if (atkAlive === 0) return endRound(s, defTeam, 'ATTACKERS ELIMINATED');
+      if (defAlive === 0) return endRound(s, atkTeam, 'DEFENDERS ELIMINATED');
     }
   } else if (s.phase === 'end' && s.phaseT <= 0) {
     nextRound(s);
   }
 }
 
-// Bom berhasil ditanam (oleh pemain atau bot).
+// Bomb planted successfully (by player or bot).
 export function plantBomb(s, planter, site) {
   const b = s.bomb;
   b.state = 'planted'; b.site = site;
   b.x = planter.x; b.z = planter.z;
   b.timer = CFG.ROUND.bombTimer; b.beepT = 1;
   b.planter = planter === s.player ? -1 : planter.id;
-  s.mapLit = true; // lampu map jadi kuning volt
+  s.mapLit = true; // map lights turn volt yellow
   if (planter === s.player) {
     s.player.money = Math.min(CFG.MONEY.cap, s.player.money + CFG.MONEY.plant);
     s.roundStats.money += CFG.MONEY.plant;
@@ -109,11 +109,11 @@ export function plantBomb(s, planter, site) {
   } else if (planter.money !== undefined) {
     planter.money = Math.min(CFG.MONEY.cap, planter.money + CFG.MONEY.plant);
   }
-  emit(s, 'planted', { site, by: planter === s.player ? 'KAMU' : planter.name });
-  radio(s, `${planter === s.player ? 'KAMU' : planter.name}: BOM DITANAM DI ${'AB'[site]}`, true);
+  emit(s, 'planted', { site, by: planter === s.player ? 'YOU' : planter.name });
+  radio(s, `${planter === s.player ? 'YOU' : planter.name}: BOMB PLANTED AT ${'AB'[site]}`, true);
 }
 
-// Bom berhasil dijinakkan.
+// Bomb defused successfully.
 export function defuseBomb(s, defuser) {
   const b = s.bomb;
   b.state = 'defused'; b.defuser = defuser === s.player ? -1 : defuser.id;
@@ -122,9 +122,9 @@ export function defuseBomb(s, defuser) {
     s.player.money = Math.min(CFG.MONEY.cap, s.player.money + CFG.MONEY.defuse);
     s.roundStats.money += CFG.MONEY.defuse;
   }
-  emit(s, 'defused', { by: defuser === s.player ? 'KAMU' : defuser.name });
-  radio(s, `${defuser === s.player ? 'KAMU' : defuser.name}: BOM DIJINAKKAN`, true);
-  endRound(s, s.playerSide === 'atk' ? 'foe' : 'you', 'BOM DIJINAKKAN');
+  emit(s, 'defused', { by: defuser === s.player ? 'YOU' : defuser.name });
+  radio(s, `${defuser === s.player ? 'YOU' : defuser.name}: BOMB DEFUSED`, true);
+  endRound(s, s.playerSide === 'atk' ? 'foe' : 'you', 'BOMB DEFUSED');
 }
 
 function endRound(s, winner, reason) {
@@ -133,26 +133,26 @@ function endRound(s, winner, reason) {
   s.endReason = reason;
   if (winner === 'you') s.scoreYou++; else s.scoreFoe++;
   awardRound(s, winner, reason);
-  // Pemain yang mati kehilangan primary & armor.
+  // A dead player loses primary & armor.
   if (!s.player.alive) { s.player.primary = null; s.player.armor = 0; s.player.helm = false; s.player.hasKit = false; }
   for (const b of s.bots) if (!b.alive) { b.weaponId = 'percik'; b.armor = 0; b.helm = false; b.hasKit = false; }
-  s.endDetail = `RONDE ${s.round} · ${SITE_NAMES[s.bomb.site] || ''}`;
+  s.endDetail = `ROUND ${s.round} · ${SITE_NAMES[s.bomb.site] || ''}`;
   emit(s, 'roundEnd', { winner, reason, scoreYou: s.scoreYou, scoreFoe: s.scoreFoe });
 }
 
 function nextRound(s) {
-  // Cek kemenangan match.
+  // Check match win.
   const toWin = CFG.ROUND.toWin;
   if (s.scoreYou >= toWin || s.scoreFoe >= toWin) return endMatch(s);
   if (s.round >= CFG.ROUND.maxRounds) {
     if (s.scoreYou === s.scoreFoe) {
       if (s.ot < CFG.ROUND.otMax) { s.ot++; s.round++; startRound(s); return; }
-      return endMatch(s); // seri
+      return endMatch(s); // draw
     }
     return endMatch(s);
   }
   s.round++;
-  // Ganti sisi setelah ronde 6.
+  // Swap sides after round 6.
   if (s.round === 7) {
     s.playerSide = s.playerSide === 'atk' ? 'def' : 'atk';
     s.phase = 'intermission'; s.phaseT = CFG.ROUND.inter;
@@ -167,14 +167,14 @@ function endMatch(s) {
   if (s.scoreYou > s.scoreFoe) s.winner = 'you';
   else if (s.scoreFoe > s.scoreYou) s.winner = 'foe';
   else s.winner = 'draw';
-  // MVP: kill terbanyak (pemain atau bot).
+  // MVP: most kills (player or bot).
   let mvp = s.player, mk = s.player.kills;
   for (const b of s.bots) if (b.kills > mk) { mk = b.kills; mvp = b; }
-  s.mvp = mvp === s.player ? 'KAMU' : mvp.name;
+  s.mvp = mvp === s.player ? 'YOU' : mvp.name;
   emit(s, 'matchEnd', { winner: s.winner, scoreYou: s.scoreYou, scoreFoe: s.scoreFoe, mvp: s.mvp });
 }
 
-// Nama pemenang ronde untuk HUD: 'you' = tim pemain.
+// Round winner name for the HUD: 'you' = the player's team.
 export function scoreLine(s) {
   return { you: s.scoreYou, foe: s.scoreFoe, round: s.round };
 }

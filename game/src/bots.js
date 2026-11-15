@@ -1,31 +1,31 @@
 // VOLTLINE PROTOCOL — bots.js
-// AI bot 4v4: state machine patrol/hold/engage/retreat/plant/defuse/buy,
-// peran per ronde (entry/support/lurker/anchor/flex), vision cone 100°/70°,
-// sight 40 m terbuka / 25 m koridor, memori 2.5 dtk, TANPA wallhack:
-// LOS dicek raycast, suara hanya arah kasar ±30° + band jarak, asap memblokir
-// tembak sepenuhnya. Bot teman menahan tembak 0.5 dtk & berhenti setelah
-// 2 hit pemain pada target yang sama.
+// 4v4 bot AI: patrol/hold/engage/retreat/plant/defuse/buy state machine,
+// per-round roles (entry/support/lurker/anchor/flex), vision cone 100°/70°,
+// sight 40 m open / 25 m corridor, 2.5 s memory, NO wallhack:
+// LOS checked by raycast, sound gives only rough direction ±30° + range band,
+// smoke fully blocks shooting. Friendly bots hold fire 0.5 s & stop after
+// 2 player hits on the same target.
 import { CFG } from './config.js';
 import { nearestWP, findRoute, WP, hasLOS, collides, inSite, siteOf, distToSite } from './map.js';
 import { fireBot, startReloadBot, tickReload, giveBotWeapon } from './weapons.js';
 import { throwGrenade, segmentInSmoke } from './grenades.js';
 import { emit, radio } from './state.js';
 
-const _route = []; // scratch rute waypoint
+const _route = []; // scratch waypoint route
 const ROLES = ['entry', 'support', 'lurker', 'anchor', 'flex'];
 
 // --- Util ---
 function dist2(ax, az, bx, bz) { const dx = ax - bx, dz = az - bz; return dx * dx + dz * dz; }
 function rand(a, b) { return a + Math.random() * (b - a); }
 function pickSite(s, b) {
-  // Penyerang pilih site: paling sedikit dijaga menurut suara + jalur terpendek.
+  // Attackers pick a site: least guarded per sound + shortest path.
   const dA = Math.abs(b.x - -20) + Math.abs(b.z - -14);
   const dB = Math.abs(b.x - 20) + Math.abs(b.z - -14);
   return dA <= dB ? 0 : 1;
 }
 function siteWP(site) { return site === 0 ? 10 : 13; }
 function holdSpot(b, site) {
-  // Titik hold di sekitar site: anchor di cover, sisanya di pintu masuk.
+  // Hold point near the site: anchor in cover, the rest at entrances.
   const spots = site === 0
     ? [[-24, -11], [-16, -11], [-20, -18], [-26, -14], [-14, -17]]
     : [[16, -11], [24, -11], [20, -18], [16, -17], [24, -17]];
@@ -45,14 +45,14 @@ export function spawnBots(s) {
     b.state = 'buy'; b.route.length = 0; b.routeI = 0; b.waitT = 0;
     b.target = -1; b.seenT = 0; b.hearT = 0;
   }
-  // Peran diundi ulang tiap ronde.
+  // Roles are redrawn every round.
   const roles = [...ROLES].sort(() => Math.random() - 0.5);
   s.bots.forEach((b, i) => { b.role = roles[i % 5]; });
 }
 
 export function botBuy(s, b) {
-  // Aturan beli bot: <1000 pistol, 1000-3000 SMG/shotgun, >3000 rifle.
-  // Minimal satu rifle per tim, maksimal satu sniper. Bot kalah cenderung eco.
+  // Bot buy rules: <1000 pistol, 1000-3000 SMG/shotgun, >3000 rifle.
+  // At least one rifle per team, at most one sniper. Losing bots tend to eco.
   const m = b.money;
   let id = 'percik';
   if (m > 3000 && Math.random() < 0.55) id = 'petir9';
@@ -60,22 +60,22 @@ export function botBuy(s, b) {
   else if (m >= 1000 && Math.random() < 0.6) id = Math.random() < 0.5 ? 'sengat9' : 'senja12';
   if (id !== 'percik') b.money -= CFG.WEAPONS[id].price;
   giveBotWeapon(b, id);
-  // Granat: support bawa smoke+flash bila mampu.
+  // Grenades: support carries smoke+flash when affordable.
   if (b.role === 'support' && b.money >= 600) { b.grenades.smoke = 1; b.grenades.flash = 1; b.money -= 600; }
   else if (b.money >= 300 && Math.random() < 0.4) { b.grenades.smoke = 1; b.money -= 300; }
-  // Armor bila kaya.
+  // Armor when rich.
   if (b.money >= 650 && Math.random() < 0.5) { b.armor = 100; b.money -= 650; }
   b.state = 'patrol';
 }
 
-// --- Persepsi ---
+// --- Perception ---
 function canSee(s, b, tx, ty, tz) {
   if (b.flashT > 0) return false;
   const dx = tx - b.x, dy = ty - (b.y + 1.5), dz = tz - b.z;
   const dist = Math.hypot(dx, dy, dz);
   const maxSight = dist2(b.x, b.z, tx, tz) > 25 * 25 ? CFG.BOT.sightOpen : CFG.BOT.sightCorr;
   if (dist > maxSight) return false;
-  // Kerucut pandang horizontal 100°, vertikal 70°.
+  // Horizontal view cone 100°, vertical 70°.
   const fx = -Math.sin(b.yaw), fz = -Math.cos(b.yaw);
   const hd = Math.hypot(dx, dz);
   if (hd > 0.01) {
@@ -87,21 +87,21 @@ function canSee(s, b, tx, ty, tz) {
   return true;
 }
 
-// Bot mendengar suara: hanya arah kasar ±30° + band jarak. Simpan sebagai hear target.
+// A bot hears a sound: only rough direction ±30° + range band. Stored as a hear target.
 export function botHear(s, b, x, z, radius, kind) {
   const d = Math.hypot(x - b.x, z - b.z);
   if (d > radius) return;
-  if (b.hearT > 0 && d > 20) return; // suara lama kalah dengan yang baru & dekat
+  if (b.hearT > 0 && d > 20) return; // an old sound loses to a newer & closer one
   const err = rand(-30, 30) * Math.PI / 180;
   const base = Math.atan2(x - b.x, z - b.z) + err;
-  const band = d < 8 ? 5 : (d < 18 ? 12 : 20); // dekat/sedang/jauh
+  const band = d < 8 ? 5 : (d < 18 ? 12 : 20); // close/mid/far
   b.hearX = b.x + Math.sin(base) * band;
   b.hearZ = b.z + Math.cos(base) * band;
   b.hearT = 1.5;
   if (kind === 'shot') b.hearConf = 2;
 }
 
-// Cari target terlihat: pemain dulu (bila musuh), lalu bot lawan terdekat.
+// Find a visible target: the player first (when an enemy), then the nearest enemy bot.
 function scanTargets(s, b) {
   const p = s.player;
   const foes = [];
@@ -117,7 +117,7 @@ function scanTargets(s, b) {
   return best;
 }
 
-// --- Gerakan ---
+// --- Movement ---
 function moveToward(s, b, tx, tz, speed, dt) {
   const dx = tx - b.x, dz = tz - b.z;
   const d = Math.hypot(dx, dz);
@@ -129,7 +129,7 @@ function moveToward(s, b, tx, tz, speed, dt) {
   if (!collides(b.x, nz, 0.38, b.y)) b.z = nz;
   b.vx = vx; b.vz = vz; b.moving = true;
   b.yaw = turnToward(b.yaw, Math.atan2(-dx, -dz), CFG.BOT.fovTurn * Math.PI / 180 * dt);
-  // Langkah kaki bot (terdengar pemain & bot lain).
+  // Bot footsteps (heard by the player & other bots).
   b.stepT -= dt * speed;
   if (b.stepT <= 0) {
     b.stepT = 1.9;
@@ -145,7 +145,7 @@ function turnToward(yaw, target, maxStep) {
   return yaw + Math.sign(d) * maxStep;
 }
 
-// Ikuti rute waypoint; true bila sampai tujuan akhir.
+// Follow the waypoint route; true when the final destination is reached.
 function followRoute(s, b, speed, dt) {
   if (b.routeI >= b.route.length) return true;
   const n = WP[b.route[b.routeI]];
@@ -160,7 +160,7 @@ function setRouteTo(s, b, tx, tz) {
   b.destX = tx; b.destZ = tz;
 }
 
-// --- Tick utama bot ---
+// --- Main bot tick ---
 export function tickBot(s, b, dt) {
   if (!b.alive) return;
   const d = CFG.DIFF[s.diff];
@@ -170,18 +170,18 @@ export function tickBot(s, b, dt) {
   if (b.smokeT > 0) b.smokeT -= dt;
   tickReload(b.weapon, dt);
 
-  // 1. Persepsi: scan tiap tick (murah: 7 bot x ~4 target, raycast pendek).
+  // 1. Perception: scan every tick (cheap: 7 bots x ~4 targets, short raycasts).
   const seen = scanTargets(s, b);
   if (seen) {
     const prevT = b.targetIsPlayer ? -2 : b.target;
     const newT = seen === s.player ? -2 : seen.id;
-    if (newT !== prevT) b.holdUntil = undefined; // target baru: tahan tembak teman 0.5 dtk
+    if (newT !== prevT) b.holdUntil = undefined; // new target: hold friendly fire 0.5 s
     b.target = seen === s.player ? -1 : seen.id;
     b.targetIsPlayer = seen === s.player;
     b.seenT = CFG.BOT.memory;
     b.seenX = seen.x; b.seenZ = seen.z;
     if (b.reactT <= 0) b.reactT = rand(d.react[0], d.react[1]);
-    // Bot teman menandai musuh di HUD 3 dtk.
+    // Friendly bots mark the enemy on the HUD for 3 s.
     if (b.team === 'you') seen.vis = true;
   } else if (b.seenT > 0) {
     b.seenT -= dt;
@@ -189,7 +189,7 @@ export function tickBot(s, b, dt) {
   }
   if (b.reactT > 0) b.reactT -= dt;
 
-  // 2. Dengar: bila ada suara segar & tak ada target, hadapi arah suara.
+  // 2. Hearing: with a fresh sound & no target, face the sound direction.
   if (b.target < 0 && !b.targetIsPlayer && b.hearT > 0) {
     b.hearT -= dt;
     b.yaw = turnToward(b.yaw, Math.atan2(b.hearX - b.x, b.hearZ - b.z), CFG.BOT.fovTurn * Math.PI / 180 * dt);
@@ -199,7 +199,7 @@ export function tickBot(s, b, dt) {
   switch (b.state) {
     case 'buy': break;
     case 'retreat': {
-      // HP < 30: mundur ke teman terdekat.
+      // HP < 30: fall back to the nearest teammate.
       let mate = null, bd = 1e9;
       for (const o of s.bots) if (o.team === b.team && o.alive && o !== b) {
         const dd = dist2(b.x, b.z, o.x, o.z);
@@ -210,29 +210,29 @@ export function tickBot(s, b, dt) {
       break;
     }
     case 'plant': {
-      // Plant: hitung mundur 3 dtk. Penyelesaian (plantBomb) dilakukan blok
-      // sim.js tepat setelah tick ini — JANGAN selesaikan di sini, kalau tidak
-      // plantBomb tidak pernah terpanggil (bug v1: bot "plant" tapi bom tak
-      // pernah ter-plant).
+      // Plant: 3 s countdown. Completion (plantBomb) happens in the sim.js
+      // block right after this tick — DO NOT complete it here, otherwise
+      // plantBomb is never called (v1 bug: bot "planted" but the bomb
+      // was never planted).
       b.plantT += dt;
       break;
     }
     case 'defuse': {
-      // Defuse: hitung mundur 5 dtk (2,5 dtk dengan kit). Penyelesaian di sim.js.
+      // Defuse: 5 s countdown (2.5 s with kit). Completion in sim.js.
       b.defuseT += dt;
       break;
     }
     case 'engage': {
       const tgt = b.targetIsPlayer ? s.player : (b.target >= 0 ? s.bots[b.target] : null);
       if (!tgt || !tgt.alive || b.seenT <= 0) { b.state = 'patrol'; break; }
-      // Hadapi target; berhenti 0.4 dtk untuk stabilkan aim, lalu burst 3-5 + jeda 0.6.
+      // Face the target; stop 0.4 s to steady aim, then burst 3-5 + 0.6 s pause.
       b.yaw = turnToward(b.yaw, Math.atan2(-(tgt.x - b.x), -(tgt.z - b.z)), CFG.BOT.fovTurn * Math.PI / 180 * dt);
       if (b.reactT <= 0) {
         if (b.burstPause > 0) b.burstPause -= dt;
         else {
           if (b.burstLeft <= 0) b.burstLeft = Math.floor(rand(d.burst[0], d.burst[1] + 1));
-          // Bot teman: tahan 0.5 dtk pertama bila pemain membidik target yang sama
-          // dalam 20 m, dan berhenti bila pemain sudah 2x mengenai target itu.
+          // Friendly bot: hold the first 0.5 s when the player is aiming at the same target
+          // within 20 m, and stop when the player has already hit that target twice.
           let holdFire = false;
           if (b.team === 'you' && s.player.alive) {
             const pd = Math.hypot(tgt.x - s.player.x, tgt.z - s.player.z);
@@ -249,27 +249,27 @@ export function tickBot(s, b, dt) {
           }
         }
       }
-      // Mundur bila HP kritis.
+      // Fall back on critical HP.
       if (b.hp < 30) b.state = 'retreat';
       break;
     }
     case 'hold': {
-      // Diam di balik cover, aim menyapu kerucut 60°.
+      // Still behind cover, aim sweeping a 60° cone.
       b.holdYaw += Math.sin(s.time * 0.5 + b.id) * dt * 0.6;
       b.yaw = turnToward(b.yaw, b.holdYaw, CFG.BOT.fovTurn * Math.PI / 180 * dt);
       if (b.seenT > 0) b.state = 'engage';
       break;
     }
     default: { // patrol
-      // Tentukan tujuan dari peran & fase bom.
+      // Pick a destination from role & bomb phase.
       if (!b.route.length || b.routeI >= b.route.length) decideMove(s, b, isAtkTeam);
       if (b.waitT > 0) { b.waitT -= dt; b.moving = false; }
       else {
         const ri = b.routeI;
         const done = followRoute(s, b, b.role === 'lurker' ? 4.2 : 5.5, dt);
-        // Baru tiba di node perantara: kadang berhenti 1,5-2,5 dtk di tiap sudut.
-        // (v1: cek ini jalan tiap tick saat bergerak, jadi bot merangkak
-        // ~0,1 m/dtk dan tak pernah bertemu — demo 60 dtk 0 tembakan.)
+        // Just arrived at an intermediate node: sometimes wait 1.5-2.5 s at each corner.
+        // (v1: this check ran every tick while moving, so bots crawled
+        // ~0.1 m/s and never met — 60 s demo, 0 shots fired.)
         if (!done && b.routeI > ri && Math.random() < 0.3) b.waitT = rand(1.5, 2.5);
       }
       if (b.seenT > 0) b.state = 'engage';
@@ -277,8 +277,8 @@ export function tickBot(s, b, dt) {
     }
   }
 
-  // Anti-macet: bot patrol yang tak bergerak 2,5 dtk padahal punya rute
-  // (garis waypoint terhalang cover) melewati waypoint itu.
+  // Anti-stuck: a patrolling bot that hasn't moved for 2.5 s despite having a route
+  // (waypoint line blocked by cover) skips that waypoint.
   if (b.state === 'patrol' && b.waitT <= 0 && b.route.length > 0 &&
       b.routeI < b.route.length) {
     const moved = Math.hypot(b.x - (b._lx ?? b.x), b.z - (b._lz ?? b.z));
@@ -290,8 +290,8 @@ export function tickBot(s, b, dt) {
     }
   }
 
-  // 4. Plant/defuse dipicu dari patrol bila kondisi cocok (dicek round.js juga).
-  // Jalan juga di fase menu (demo attract mode: bot-vs-bot).
+  // 4. Plant/defuse triggered from patrol when conditions fit (also checked in round.js).
+  // Also runs in the menu phase (attract-mode demo: bot-vs-bot).
   if (b.state === 'patrol' && (s.phase === 'live' || s.phase === 'menu')) {
     const site = siteOf(b.x, b.z);
     if (isAtkTeam && site >= 0 && s.bomb.state === 'carried' && s.bomb.carrier === b.id) {
@@ -305,7 +305,7 @@ export function tickBot(s, b, dt) {
     }
   }
 
-  // 5. Utility: smoke sebelum plant/retake, flash sebelum masuk site.
+  // 5. Utility: smoke before plant/retake, flash before entering a site.
   if (b.state === 'patrol' && !b.usedSmoke && b.grenades.smoke > 0 && isAtkTeam) {
     const site = pickSite(s, b);
     if (distToSite(b.x, b.z, site) < 12) {
@@ -321,7 +321,7 @@ export function tickBot(s, b, dt) {
     }
   }
 
-  // 6. Reload otomatis saat mag kosong & aman.
+  // 6. Auto-reload when the mag is empty & it's safe.
   if (b.weapon.mag === 0 && b.state !== 'engage') startReloadBot(s, b);
 }
 
@@ -329,13 +329,13 @@ function decideMove(s, b, isAtkTeam) {
   const bomb = s.bomb;
   if (bomb.state === 'planted') {
     if (isAtkTeam) {
-      // Penyerang jaga site dari jarak 8-15 m setelah plant.
+      // Attackers guard the site from 8-15 m after plant.
       const hs = holdSpot(b, bomb.site);
       setRouteTo(s, b, hs[0], hs[1]);
       b.state = 'patrol';
       return;
     }
-    // Defender retake berpasangan ke site yang ditanam.
+    // Defenders retake in pairs toward the planted site.
     const hs = holdSpot(b, bomb.site);
     setRouteTo(s, b, hs[0], hs[1]);
     b.state = 'patrol';
@@ -343,18 +343,18 @@ function decideMove(s, b, isAtkTeam) {
   }
   if (isAtkTeam) {
     const site = pickSite(s, b);
-    // Fake: bila 20 dtk tanpa kontak, dua bot pindah site lain (sekali per ronde).
+    // Fake: after 20 s without contact, two bots rotate to the other site (once per round).
     let target = site;
     if (s.time > 20 && !s._fakeDone && (b.role === 'lurker' || b.role === 'flex')) {
       target = 1 - site; s._fakeDone = true;
-      radio(s, `${b.name}: ROTASI KE ${target === 0 ? 'A' : 'B'}`);
+      radio(s, `${b.name}: ROTATING TO ${target === 0 ? 'A' : 'B'}`);
     }
     if (b.role === 'anchor') { const hs = holdSpot(b, site); setRouteTo(s, b, hs[0], hs[1]); }
-    else if (b.role === 'lurker') { setRouteTo(s, b, site === 0 ? -26 : 26, 14); } // lorong kabel
+    else if (b.role === 'lurker') { setRouteTo(s, b, site === 0 ? -26 : 26, 14); } // cable corridor
     else setRouteTo(s, b, SITES_X(site), -14);
     b._site = site;
   } else {
-    // Defender: 2-1-2 — dua di A, satu mid, dua di B.
+    // Defenders: 2-1-2 — two at A, one mid, two at B.
     const spots = [[-20, -14], [-24, -11], [0, 4], [20, -14], [24, -11]];
     const sp = spots[b.id % 5];
     setRouteTo(s, b, sp[0], sp[1]);
@@ -364,7 +364,7 @@ function decideMove(s, b, isAtkTeam) {
 }
 function SITES_X(site) { return site === 0 ? -20 : 20; }
 
-// Setelah sampai di titik hold defender, ubah ke state hold.
+// Once a defender reaches its hold point, switch to hold state.
 export function tickBotHoldCheck(s, b) {
   if (b.state !== 'patrol' || !b._holdAt) return;
   if (dist2(b.x, b.z, b._holdAt[0], b._holdAt[1]) < 1.5) {

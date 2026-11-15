@@ -1,9 +1,9 @@
 // VOLTLINE PROTOCOL — render.js
-// Yang terlihat: scene three.js dari state (read-only). Map low-poly malam
-// biru + kuning volt + putih kaca, satu directional hangat + ambient dingin,
-// fog tipis dari 60 m. Voxel bot berkepala besar, viewmodel per senjata,
-// tracer/muzzle/smoke/ledakan dari pool tetap (<400 mesh, target 60 fps).
-// Render TIDAK PERNAH menulis state gameplay.
+// What you see: the three.js scene built from state (read-only). Low-poly night
+// blue + volt-yellow + glass-white map, one warm directional + cold ambient,
+// thin fog from 60 m. Big-headed voxel bots, per-weapon viewmodels,
+// tracer/muzzle/smoke/explosion from fixed pools (<400 meshes, 60 fps target).
+// Render NEVER writes gameplay state.
 import * as THREE from 'three';
 import { CFG, SITE_NAMES } from './config.js';
 import { BOXES, SITES, GLASS_ZONES } from './map.js';
@@ -16,14 +16,14 @@ let tracers = [], smokes = [], muzzle = null, explosion = null, bombMesh = null;
 let siteLights = [], siteRings = [], mapGroup = null;
 let tmpV = new V3(), tmpV2 = new V3();
 
-// FOV ADS (fungsi murni, tanpa DOM — bisa diuji headless):
-// dasar 75 -> 55 tanpa scope, DMR 2x -> 38, sniper 4x -> 25.
+// ADS FOV (pure function, no DOM — testable headless):
+// base 75 -> 55 without a scope, DMR 2x -> 38, sniper 4x -> 25.
 export function adsTargetFov(w) {
   if (!w) return 75;
   const sc = CFG.WEAPONS[w.id].scope;
   return sc === 4 ? 25 : sc === 2 ? 38 : 55;
 }
-// Sensitivitas mouse ikut menyempit dengan FOV saat ADS (fov/75).
+// Mouse sensitivity narrows with FOV while ADS (fov/75).
 export function adsSensScale(fov) { return fov / 75; }
 
 let lastWeaponId = '';
@@ -53,7 +53,7 @@ function boardTexture(text, sub, color) {
   return t;
 }
 
-// Stensil kode seri di atas peti/kontainer: teks kuning volt di kanvas transparan.
+// Series-code stencil on crates/containers: volt-yellow text on a transparent canvas.
 const STENCIL_TEX = {};
 function stencilTexture(code) {
   if (STENCIL_TEX[code]) return STENCIL_TEX[code];
@@ -79,7 +79,7 @@ function softTexture() {
   return new THREE.CanvasTexture(cv);
 }
 
-// Skybox: gradasi siang cerah golden-hour (biru cerah -> kuning hangat) + matahari.
+// Skybox: bright golden-hour daytime gradient (bright blue -> warm yellow) + sun.
 function skyTexture() {
   const cv = document.createElement('canvas'); cv.width = 1024; cv.height = 512;
   const c = cv.getContext('2d');
@@ -100,8 +100,8 @@ function skyTexture() {
   return t;
 }
 
-// Tekstur permukaan prosedural: satu gambar dipakai sebagai diffuse + bump.
-// Panel kotak + sambungan + bintik; tanpa aset luar.
+// Procedural surface texture: one image used as diffuse + bump.
+// Square panels + seams + speckles; no external assets.
 function surfaceTexture(base, seam, speck, step) {
   const cv = document.createElement('canvas'); cv.width = 256; cv.height = 256;
   const c = cv.getContext('2d');
@@ -121,7 +121,7 @@ function surfaceTexture(base, seam, speck, step) {
   return { map, bump };
 }
 
-// Material PBR map utama (ganti Lambert): floor beton, wall beton, cover plat logam.
+// Main map PBR materials (replacing Lambert): concrete floor, concrete wall, metal-plate cover.
 const PBR = {};
 function pbrMat(kind) {
   if (PBR[kind]) return PBR[kind];
@@ -153,11 +153,11 @@ function pbrMat(kind) {
 }
 
 export function initRender(canvas) {
-  renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
+  renderer.setPixelRatio(1);
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.type = THREE.PCFShadowMap;
   scene = new THREE.Scene();
   scene.background = new THREE.Color(0x9cc4e8);
   scene.fog = new THREE.Fog(0xcfdde8, 55, 95);
@@ -169,17 +169,17 @@ export function initRender(canvas) {
     renderer.setSize(window.innerWidth, window.innerHeight);
   });
 
-  // Skybox atmosferik prosedural: gradasi senja + matahari (tanpa aset luar).
+  // Procedural atmospheric skybox: dusk gradient + sun (no external assets).
   const sky = new THREE.Mesh(new THREE.SphereGeometry(190, 24, 16),
     new THREE.MeshBasicMaterial({ map: skyTexture(), side: THREE.BackSide, fog: false }));
   scene.add(sky);
 
-  // Cahaya golden-hour siang cerah: matahari kuat + ambient/hemisphere naik.
-  // Matahari melempar bayangan tajam; aksen volt-yellow tetap warna brand.
+  // Bright daytime golden-hour light: strong sun + raised ambient/hemisphere.
+  // The sun casts sharp shadows; volt-yellow accents stay the brand colour.
   const sun = new THREE.DirectionalLight(0xffe9b0, 2.6);
   sun.position.set(-30, 40, -20);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(1024, 1024);
+  sun.shadow.mapSize.set(512, 512);
   sun.shadow.camera.left = -36; sun.shadow.camera.right = 36;
   sun.shadow.camera.top = 26; sun.shadow.camera.bottom = -26;
   sun.shadow.camera.near = 1; sun.shadow.camera.far = 120;
@@ -198,19 +198,19 @@ export function initRender(canvas) {
 function buildMap() {
   mapGroup = new THREE.Group();
   scene.add(mapGroup);
-  // Lantai: beton biru malam PBR + garis sirkuit kuning tipis.
+  // Floor: PBR night-blue concrete + thin yellow circuit lines.
   const floor = new THREE.Mesh(new THREE.PlaneGeometry(66, 46), pbrMat('floor'));
   floor.rotation.x = -Math.PI / 2; floor.position.set(0, 0, 0);
   floor.receiveShadow = true;
   mapGroup.add(floor);
-  // Garis sirkuit kuning di lantai (strip tipis emissive).
+  // Yellow circuit lines on the floor (thin emissive strips).
   const stripMat = new THREE.MeshBasicMaterial({ color: 0xffd21a });
   for (const [x, z, w, d] of [[0, 0, 60, 0.12], [0, -14, 44, 0.12], [0, 14, 44, 0.12], [-20, -7, 0.12, 14], [20, -7, 0.12, 14]]) {
     const s = new THREE.Mesh(new THREE.PlaneGeometry(w, d), stripMat);
     s.rotation.x = -Math.PI / 2; s.position.set(x, 0.02, z);
     mapGroup.add(s);
   }
-  // Zona lantai kaca: panel semi-transparan + kabel menyala di bawahnya.
+  // Glass floor zones: semi-transparent panels + glowing cables underneath.
   for (const g of GLASS_ZONES) {
     const w = g.x1 - g.x0, d = g.z1 - g.z0;
     const under = new THREE.Mesh(new THREE.PlaneGeometry(w, d), new THREE.MeshBasicMaterial({ color: 0x061020 }));
@@ -227,7 +227,7 @@ function buildMap() {
     glass.rotation.x = -Math.PI / 2; glass.position.set((g.x0 + g.x1) / 2, 0.03, (g.z0 + g.z1) / 2);
     mapGroup.add(glass);
   }
-  // Kotak map: dinding beton PBR, cover plat logam PBR; lempar + terima bayangan.
+  // Map boxes: PBR concrete walls, PBR metal-plate cover; cast + receive shadows.
   for (const b of BOXES) {
     const w = b.x1 - b.x0, d = b.z1 - b.z0;
     const isWall = b.h >= 3;
@@ -235,17 +235,17 @@ function buildMap() {
     m.position.set((b.x0 + b.x1) / 2, b.h / 2, (b.z0 + b.z1) / 2);
     m.castShadow = true; m.receiveShadow = true;
     mapGroup.add(m);
-    // Trim kuning volt di tepi atas cover.
+    // Volt-yellow trim on the top edge of cover.
     if (!isWall) {
       const trim = box(w + 0.04, 0.06, d + 0.04, new THREE.MeshBasicMaterial({ color: 0xffd21a }));
       trim.position.set(m.position.x, b.h + 0.03, m.position.z);
       mapGroup.add(trim);
     }
   }
-  // Papan nama site 3D (banner besar) + ring plant + lampu site.
+  // 3D site name boards (large banners) + plant ring + site lights.
   SITES.forEach((st, i) => {
     const board = new THREE.Mesh(new THREE.PlaneGeometry(10, 2.5),
-      new THREE.MeshBasicMaterial({ map: boardTexture(i === 0 ? 'SITE A // RELAY UTARA' : 'SITE B // GARDU KACA', '· PLANT ZONE ·', '#FFD21A') }));
+      new THREE.MeshBasicMaterial({ map: boardTexture(i === 0 ? 'SITE A // NORTH RELAY' : 'SITE B // GLASS SUBSTATION', '· PLANT ZONE ·', '#FFD21A'), side: THREE.DoubleSide }));
     board.position.set(st.cx, 3.0, st.cz - 2.5);
     mapGroup.add(board);
     const ring = new THREE.Mesh(new THREE.RingGeometry(st.r - 0.15, st.r, 40),
@@ -256,27 +256,38 @@ function buildMap() {
     light.position.set(st.cx, 3, st.cz);
     scene.add(light); siteLights.push(light);
   });
-  // Stensil kode seri di atas peti/kontainer (diegetic texture).
-  const STENCILS = [[15, 'IC-04'], [16, 'SEC-9'], [17, 'VOLT-7'], [20, 'RLY-2'], [22, 'KBL-11'], [24, 'GRD-5']];
-  for (const [bi, code] of STENCILS) {
+  // Series-code stencils on the vertical side of crates/containers at eye level
+  // (diegetic texture). Face: S = +z, N = -z, E = +x, W = -x.
+  const STENCILS = [[15, 'IC-04', 'S'], [16, 'SEC-9', 'E'], [17, 'VOLT-7', 'W'], [20, 'RLY-2', 'S'], [22, 'KBL-11', 'S'], [24, 'GRD-5', 'N']];
+  for (const [bi, code, face] of STENCILS) {
     const b = BOXES[bi];
     if (!b) continue;
     const st = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 0.45),
       new THREE.MeshBasicMaterial({ map: stencilTexture(code), transparent: true }));
-    st.rotation.x = -Math.PI / 2;
-    st.position.set((b.x0 + b.x1) / 2, b.h + 0.02, (b.z0 + b.z1) / 2);
+    const y = Math.min(1.4, b.h * 0.55);
+    if (face === 'S') { st.rotation.y = 0; st.position.set((b.x0 + b.x1) / 2, y, b.z1 + 0.02); }
+    else if (face === 'N') { st.rotation.y = Math.PI; st.position.set((b.x0 + b.x1) / 2, y, b.z0 - 0.02); }
+    else if (face === 'E') { st.rotation.y = Math.PI / 2; st.position.set(b.x1 + 0.02, y, (b.z0 + b.z1) / 2); }
+    else { st.rotation.y = -Math.PI / 2; st.position.set(b.x0 - 0.02, y, (b.z0 + b.z1) / 2); }
     mapGroup.add(st);
   }
-  // Pilar relay tengah (menara kecil menyala).
+  // Central relay pillar (small glowing tower).
   const tower = box(0.5, 6, 0.5, new THREE.MeshBasicMaterial({ color: 0xffd21a }));
   tower.position.set(0, 3, 0);
   mapGroup.add(tower);
+  // Steel gantry beams spanning the arena above the walls (visual depth).
+  const gantryMat = new THREE.MeshStandardMaterial({ color: 0x3a4a5a, roughness: 0.4, metalness: 0.6 });
+  for (const gz of [-7, 7]) {
+    const beam = box(64, 0.4, 0.6, gantryMat);
+    beam.position.set(0, 5.5, gz);
+    mapGroup.add(beam);
+  }
 }
 
-// --- Voxel bot: kepala besar (target headshot), visor, garis punggung menyala ---
+// --- Voxel bot: big head (headshot target), visor, glowing back line ---
 function buildBotMesh(team) {
   const g = new THREE.Group();
-  // Biru teman diperdalam (0x2b8fd9) supaya tetap terbaca di palet siang cerah.
+  // Friendly blue deepened (0x2b8fd9) so it stays readable in the bright daytime palette.
   const bodyC = team === 'you' ? 0x2b8fd9 : 0xff5a1a;
   const headC = team === 'you' ? 0xf5f5f0 : 0xff8a1e;
   const body = box(0.72, 0.85, 0.4, mat(bodyC)); body.position.y = 0.95; g.add(body);
@@ -286,11 +297,11 @@ function buildBotMesh(team) {
   line.position.set(0, 0.95, 0.23); g.add(line);
   const legL = box(0.2, 0.5, 0.24, mat(0x141c33)); legL.position.set(-0.18, 0.25, 0); g.add(legL);
   const legR = box(0.2, 0.5, 0.24, mat(0x141c33)); legR.position.set(0.18, 0.25, 0); g.add(legR);
-  // Lengan memegang senjata ke depan; mengayun kecil saat bergerak.
+  // Arms hold the weapon forward; small swing while moving.
   const armR = box(0.13, 0.5, 0.13, mat(bodyC)); armR.position.set(0.3, 1.15, -0.15); armR.rotation.x = -0.9; g.add(armR);
   const armL = box(0.13, 0.5, 0.13, mat(bodyC)); armL.position.set(-0.28, 1.15, -0.15); armL.rotation.x = -0.9; g.add(armL);
   const gun = box(0.08, 0.12, 0.7, mat(0x222222)); gun.position.set(0.3, 1.15, -0.3); g.add(gun);
-  g.traverse((o) => { if (o.isMesh) o.castShadow = true; }); // bot melempar bayangan
+  g.traverse((o) => { if (o.isMesh) o.castShadow = true; }); // bots cast shadows
   g.userData = { legL, legR, armL, armR, head, body, headMat: head.material, bodyMat: body.material };
   scene.add(g);
   return g;
@@ -300,24 +311,24 @@ function buildViewmodel() {
   viewmodel = new THREE.Group();
   camera.add(viewmodel);
   scene.add(camera);
-  // Bagian viewmodel dibuat ulang per senjata (siluet berbeda).
+  // Viewmodel parts are rebuilt per weapon (different silhouettes).
   viewmodelParts = {
     body: box(0.1, 0.14, 0.55, mat(0x2a2f3a)),
     barrel: box(0.05, 0.05, 0.4, mat(0x1a1a1a)),
     grip: box(0.09, 0.2, 0.1, mat(0x222222)),
     accent: box(0.11, 0.03, 0.3, new THREE.MeshBasicMaterial({ color: 0xffd21a })),
     scope: box(0.06, 0.08, 0.22, mat(0x111111)),
-    // Lensa scope: kaca tembus pandang + satu titik reticle emissive di tengah.
+    // Scope lens: see-through glass + one emissive reticle dot in the centre.
     lens: new THREE.Mesh(new THREE.PlaneGeometry(0.05, 0.05),
       new THREE.MeshLambertMaterial({ color: 0x9fd8ff, transparent: true, opacity: 0.25 })),
     reticle: box(0.014, 0.014, 0.004, new THREE.MeshBasicMaterial({ color: 0xffd21a })),
-    // Stripe aksen warna per senjata (di sisi body, warna diganti per senjata).
+    // Per-weapon accent stripe (on the body side, colour swapped per weapon).
     stripe: box(0.115, 0.02, 0.3, new THREE.MeshBasicMaterial({ color: 0xffd21a })),
-    // Bilah pisau taktis (slot 3): hanya terlihat saat slot melee.
+    // Tactical knife blade (slot 3): only visible in the melee slot.
     blade: box(0.02, 0.3, 0.07, mat(0xcfd8e8)),
-    // Tangan voxel + lengan bawah: parent ke grup viewmodel yang sama, jadi
-    // ikut recoil kick, walk bob, dan reload dip. Tangan di bawah garis bidik.
-    // Sarung tangan taktis: gelap + aksen knuckle.
+    // Voxel hands + forearms: parented to the same viewmodel group, so they
+    // follow the recoil kick, walk bob, and reload dip. Hands below the sight line.
+    // Tactical gloves: dark + knuckle accents.
     handR: box(0.09, 0.09, 0.13, mat(0x1f2a3a)),
     knuckR: box(0.095, 0.02, 0.06, mat(0x0a0a0a)),
     foreR: box(0.09, 0.09, 0.34, mat(0x2e6db4)),
@@ -345,14 +356,14 @@ function buildViewmodel() {
   viewmodelParts.foreL.position.set(0.22, -0.44, -0.55);
   viewmodelParts.foreL.rotation.x = 0.4;
   for (const k in viewmodelParts) viewmodel.add(viewmodelParts[k]);
-  // Muzzle flash: sprite starburst kuning 1 frame (additive).
+  // Muzzle flash: 1-frame yellow starburst sprite (additive).
   muzzle = new THREE.Mesh(new THREE.PlaneGeometry(0.45, 0.45),
     new THREE.MeshBasicMaterial({ map: starburstTexture(), transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending }));
   muzzle.position.set(0.28, -0.24, -1.2);
   viewmodel.add(muzzle);
 }
 
-// Muzzle flash starburst: 8 ujung + inti putih pijar (bukan kotak polos).
+// Muzzle flash starburst: 8 spikes + glowing white core (not a plain square).
 function starburstTexture() {
   const cv = document.createElement('canvas'); cv.width = 128; cv.height = 128;
   const c = cv.getContext('2d');
@@ -371,14 +382,14 @@ function starburstTexture() {
   return new THREE.CanvasTexture(cv);
 }
 
-// Warna stripe aksen per senjata.
+// Per-weapon accent stripe colours.
 const STRIPE_C = {
   percik: 0x9aa0aa, petir9: 0xffd21a, jarum: 0x3fa9f5,
   sengat9: 0xff8a1e, busur: 0xff3b30, senja12: 0x7be495,
 };
 
 function buildPools() {
-  // Tracer: 24 garis tipis (putih kawan, oranye musuh).
+  // Tracers: 24 thin lines (white friendly, orange enemy).
   for (let i = 0; i < 24; i++) {
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3));
@@ -387,7 +398,7 @@ function buildPools() {
     scene.add(line);
     tracers.push({ line, t: 0 });
   }
-  // Smoke: 48 sprite lembut.
+  // Smoke: 48 soft sprites.
   const tex = softTexture();
   for (let i = 0; i < 48; i++) {
     const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, color: 0xcfd8e8, transparent: true, opacity: 0, depthWrite: false }));
@@ -395,7 +406,7 @@ function buildPools() {
     scene.add(sp);
     smokes.push({ sp, t: 0, life: 0, x: 0, y: 0, z: 0, seed: Math.random() * 10 });
   }
-  // Ledakan: bola api + cahaya.
+  // Explosion: fireball + light.
   explosion = new THREE.Group();
   const ball = new THREE.Mesh(new THREE.SphereGeometry(1, 12, 10),
     new THREE.MeshBasicMaterial({ color: 0xff7a1a, transparent: true, opacity: 0 }));
@@ -403,7 +414,7 @@ function buildPools() {
   explosion.add(ball); explosion.add(elight);
   explosion.userData = { ball, elight, t: 0 };
   scene.add(explosion);
-  // Bom: kotak kecil + lampu berkedip.
+  // Bomb: small box + blinking light.
   bombMesh = new THREE.Group();
   const bb = box(0.3, 0.2, 0.22, mat(0x222222)); bombMesh.add(bb);
   const bl = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 6), new THREE.MeshBasicMaterial({ color: 0xff3b30 }));
@@ -416,15 +427,22 @@ function buildPools() {
 // --- Per frame ---
 export function render(s, dt, time) {
   const p = s.player;
-  // Kamera: menu = orbit RENDAH mengikuti pusat aksi demo (bukan orbit jauh
-  // di atas map kosong); spectate = ikuti bot; main = FPS.
+  // Camera: menu = first-person AI pilot POV (the pilot bot's eyes);
+  // spectate = follow bot; main = FPS.
   if (s.phase === 'menu') {
-    let cx = 0, cz = 0, n = 0;
-    for (const b of s.bots) if (b.alive) { cx += b.x; cz += b.z; n++; }
-    if (n > 0) { cx /= n; cz /= n; }
-    const a = time * 0.12;
-    camera.position.set(cx + Math.sin(a) * 9, 3.4, cz + Math.cos(a) * 9);
-    camera.lookAt(cx, 1.2, cz);
+    const b = s.bots[s._pilotId];
+    if (b && b.alive) {
+      camera.position.set(b.x, b.y + 1.6, b.z);
+      camera.rotation.set(b.pitch || 0, b.yaw, 0);
+    } else {
+      // Fallback: slow orbit around the action centre when no pilot is alive.
+      let cx = 0, cz = 0, n = 0;
+      for (const o of s.bots) if (o.alive) { cx += o.x; cz += o.z; n++; }
+      if (n > 0) { cx /= n; cz /= n; }
+      const a = time * 0.12;
+      camera.position.set(cx + Math.sin(a) * 9, 3.4, cz + Math.cos(a) * 9);
+      camera.lookAt(cx, 1.2, cz);
+    }
   } else if (!p.alive && p.spectate >= 0 && s.bots[p.spectate]) {
     const b = s.bots[p.spectate];
     camera.position.set(b.x, b.y + 1.6, b.z);
@@ -437,15 +455,15 @@ export function render(s, dt, time) {
       p.z + (Math.random() - 0.5) * shake);
     camera.rotation.set(p.pitch, p.yaw, 0);
   }
-  // FOV: dasar 75; ADS 55 (tanpa scope) / 38 (DMR 2x) / 25 (sniper 4x).
-  // Lerp tiap frame + updateProjectionMatrix selama FOV masih bergerak.
+  // FOV: base 75; ADS 55 (no scope) / 38 (DMR 2x) / 25 (sniper 4x).
+  // Lerp each frame + updateProjectionMatrix while the FOV is still moving.
   const w = curWeapon(s);
   const targetFov = adsTargetFov(p.ads ? w : null);
   if (Math.abs(camera.fov - targetFov) > 0.05) {
     camera.fov += (targetFov - camera.fov) * Math.min(1, dt * 10);
     camera.updateProjectionMatrix();
   }
-  // Lampu site: kuning volt saat plant, biru saat normal.
+  // Site lights: volt-yellow when planted, blue normally.
   const lit = s.mapLit;
   siteLights.forEach((l, i) => {
     l.color.setHex(lit ? 0xffd21a : 0x3fa9f5);
@@ -456,7 +474,7 @@ export function render(s, dt, time) {
     r.material.opacity = 0.6 + 0.3 * Math.sin(time * 3);
   });
 
-  // Bot: posisi, rotasi, animasi kaki, jongkok, mati = terbaring.
+  // Bots: position, rotation, leg animation, crouch, dead = lying down.
   for (let i = 0; i < s.bots.length; i++) {
     const b = s.bots[i];
     if (!botMeshes[i]) botMeshes[i] = buildBotMesh(b.team);
@@ -476,22 +494,22 @@ export function render(s, dt, time) {
     u.armR.rotation.x = -0.9 - swing * 0.5;
     u.body.scale.y = b.crouch ? 0.75 : 1;
     u.head.position.y = b.crouch ? 1.25 : 1.58;
-    // Flash musuh: kepala putih berkedip saat ter-flash, kembali normal sesudahnya.
-    // Hit-flash: seluruh badan + kepala putih ~80 mdtk saat kena tembak.
+    // Enemy flash: white blinking head while flashed, back to normal after.
+    // Hit-flash: whole body + head white for ~80ms when shot.
     u.head.material = (b.flashT > 0 || b.hitFlashT > 0) ? mat(0xffffff) : u.headMat;
     u.body.material = b.hitFlashT > 0 ? mat(0xffffff) : u.bodyMat;
   }
 
-  // Viewmodel: siluet per senjata + recoil + reload dip.
+  // Viewmodel: per-weapon silhouette + recoil + reload dip.
   updateViewmodel(s, dt, time);
-  // Bom di dunia.
+  // Bomb in the world.
   if (s.bomb.state === 'planted') {
     bombMesh.visible = true;
     bombMesh.position.set(s.bomb.x, 0.15, s.bomb.z);
     bombMesh.userData.bl.material.color.setHex(Math.sin(time * 10) > 0 ? 0xff3b30 : 0x330000);
   } else bombMesh.visible = false;
 
-  // Tracer & smoke & ledakan menua.
+  // Tracers & smoke & explosion age out.
   for (const t of tracers) {
     if (t.t > 0) { t.t -= dt; t.line.material.opacity = Math.max(0, t.t / 0.12); }
     else t.line.material.opacity = 0;
@@ -513,12 +531,12 @@ function updateViewmodel(s, dt, time) {
   if (!viewmodel) return;
   const w = curWeapon(s);
   const melee = s.player.slot === 'melee';
-  const id = melee ? 'pisau' : (w ? w.id : 'percik');
+  const id = melee ? 'knife' : (w ? w.id : 'percik');
   if (id !== lastWeaponId) {
     lastWeaponId = id;
-    // Siluet berbeda per senjata: panjang laras & ukuran body.
-    // Melee: senjata api sembunyi, bilah pisau tampil, tangan kanan ke gagang.
-    const isMelee = id === 'pisau';
+    // Different silhouette per weapon: barrel length & body size.
+    // Melee: firearm hidden, knife blade shown, right hand to the grip.
+    const isMelee = id === 'knife';
     viewmodelParts.body.visible = !isMelee;
     viewmodelParts.barrel.visible = !isMelee;
     viewmodelParts.grip.visible = !isMelee;
@@ -543,22 +561,23 @@ function updateViewmodel(s, dt, time) {
     }
   }
   const p = s.player;
-  // Zoom sniper 4x: viewmodel (termasuk tangan) sembunyi di balik scope overlay HUD.
-  viewmodel.visible = !(p.ads && w && CFG.WEAPONS[w.id].scope === 4);
-  // Recoil kick + reload dip + bob jalan.
+  // Sniper 4x zoom: viewmodel (hands included) hides behind the HUD scope overlay.
+  // Menu phase: hidden too — otherwise the player's pistol floats in the air during the demo.
+  viewmodel.visible = s.phase !== 'menu' && !(p.ads && w && CFG.WEAPONS[w.id].scope === 4);
+  // Recoil kick + reload dip + walk bob.
   const kick = w ? (w.spreadBloom || 0) * 0.06 : 0;
   const reloading = w && w.reloading > 0;
   const bob = p.moveMag > 0.5 ? Math.sin(time * 9) * 0.012 : 0;
   viewmodel.position.y = (reloading ? -0.22 : 0) + bob;
   viewmodel.position.z = kick + (reloading ? 0.1 : 0);
   viewmodel.rotation.x = kick * 1.5 + (reloading ? 0.5 : 0);
-  // Ayunan pisau: putar viewmodel 0,3 dtk setelah ayun.
+  // Knife swing: rotate the viewmodel for 0.3s after a swing.
   if (melee) {
     const k = Math.max(0, 0.3 - (s.time - (p.meleeLast || -9))) / 0.3;
     viewmodel.rotation.z = -k * 0.9;
     viewmodel.rotation.x = -k * 0.4;
   } else viewmodel.rotation.z = 0;
-  // ADS: viewmodel ke tengah (semua bagian, termasuk tangan & lensa, ikut).
+  // ADS: viewmodel to the centre (all parts, hands & lens included).
   const adsK = p.ads ? 1 : 0;
   viewmodelParts.body.position.x += ((p.ads ? 0 : 0.28) - viewmodelParts.body.position.x) * Math.min(1, dt * 12);
   viewmodelParts.barrel.position.x = viewmodelParts.body.position.x;
@@ -575,7 +594,7 @@ function updateViewmodel(s, dt, time) {
   viewmodelParts.handL.position.x = viewmodelParts.body.position.x;
   viewmodelParts.knuckL.position.x = viewmodelParts.body.position.x;
   viewmodelParts.foreL.position.x = viewmodelParts.body.position.x - 0.06;
-  // Muzzle flash memudar.
+  // Muzzle flash fades out.
   if (muzzle) muzzle.material.opacity = Math.max(0, muzzle.material.opacity - dt * 12);
 }
 
@@ -585,7 +604,7 @@ function updateSmokes(s, dt) {
     for (let k = 0; k < 6 && si < smokes.length; k++, si++) {
       const sp = smokes[si];
       const a = (k / 6) * Math.PI * 2 + sm.t;
-      // Awan 3D berlapis: 3 lapis (bawah/tengah/atas), ukuran + opacity beda.
+      // Layered 3D cloud: 3 layers (bottom/middle/top), different size + opacity.
       const layer = k % 3;
       sp.sp.scale.setScalar(2 + layer * 0.9 + sm.t * 0.4);
       sp.sp.position.set(sm.x + Math.cos(a) * 1.6, 0.6 + layer * 0.7 + Math.sin(sm.t * 0.7 + k) * 0.5, sm.z + Math.sin(a) * 1.6);
@@ -595,7 +614,7 @@ function updateSmokes(s, dt) {
   for (; si < smokes.length; si++) smokes[si].sp.material.opacity = 0;
 }
 
-// Konsumsi event visual dari state.events.
+// Consume visual events from state.events.
 export function consumeRenderEvent(s, ev) {
   switch (ev.type) {
     case 'tracer': {
@@ -605,7 +624,7 @@ export function consumeRenderEvent(s, ev) {
       pos[3] = ev.x1; pos[4] = ev.y1; pos[5] = ev.z1;
       t.line.geometry.attributes.position.needsUpdate = true;
       t.line.material.color.setHex(ev.foe ? 0xff8a1e : 0xfff6c9);
-      t.line.material.opacity = 1; // inti tracer terang penuh
+      t.line.material.opacity = 1; // tracer core at full brightness
       t.t = 0.12;
       break;
     }

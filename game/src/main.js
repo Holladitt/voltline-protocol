@@ -1,8 +1,8 @@
 // VOLTLINE PROTOCOL — main.js
-// Boot & loop utama. Urutan impor = urutan baca judge (state, config, sim,
+// Boot & main loop. Import order = judge reading order (state, config, sim,
 // player, weapons, combat, bots, map, grenades, economy, round, hud, input,
-// render, audio). Loop: input -> fixed-step sim (60 Hz) -> konsumsi event
-// (audio/render/hearing) -> render -> HUD. Tanpa network, tanpa eval.
+// render, audio). Loop: input -> fixed-step sim (60 Hz) -> consume events
+// (audio/render/hearing) -> render -> HUD. No network, no eval.
 import { createState, resetMatch, curWeapon } from './state.js';
 import { CFG } from './config.js';
 import { stepFrame, applyHearing } from './sim.js';
@@ -27,7 +27,7 @@ const { renderer, camera } = initRender(canvas);
 let lastT = performance.now();
 let sens = 1;
 
-// DEPLOY: buang state demo/menu, mulai match sungguhan dari nol.
+// DEPLOY: discard the demo/menu state, start a real match from scratch.
 function deploy() {
   initAudio(); resumeAudio();
   hideGuide();
@@ -52,8 +52,8 @@ function flashBuyMsg(msg) {
   if (el) { el.textContent = msg; el.style.opacity = '1'; setTimeout(() => { el.style.opacity = '0'; }, 1500); }
 }
 
-// Buka buy menu dengan B (hanya fase buy); M mute; Esc keluar pointer lock.
-// P mulai match dari menu attract; H buka/tutup panduan (menu).
+// Open the buy menu with B (buy phase only); M mute; Esc exits pointer lock.
+// P starts the match from the attract menu; H toggles the guide (menu).
 input.cb.onKey = (code) => {
   if (code === 'KeyB' && s.phase === 'buy') s.buyOpen = !s.buyOpen;
   if (code === 'KeyM') setMuted(!isMuted());
@@ -61,7 +61,13 @@ input.cb.onKey = (code) => {
   if (code === 'KeyH' && s.phase === 'menu') toggleGuide();
 };
 
-// Konsumsi antrean event sekali-pakai: audio, render, hearing AI, HUD.
+// Click anywhere to play: a click on the canvas during the menu deploys.
+// (input.js mousedown already requests pointer lock when unlocked; this
+// handler is separate. After deploy the phase is 'buy', so the same click
+// cannot fire a weapon.)
+canvas.addEventListener('click', () => { if (s.phase === 'menu') deploy(); });
+
+// Consume the one-shot event queue: audio, render, AI hearing, HUD.
 function consumeEvents() {
   const evs = s.events;
   for (let i = 0; i < evs.length; i++) {
@@ -71,7 +77,7 @@ function consumeEvents() {
     applyHearing(s, ev);
     if (ev.type === 'roundEnd') noteRoundWinner(s, ev.winner);
     if (ev.type === 'shot' && !ev.own && ev.botId !== undefined) {
-      // Tembakan musuh terlihat di minimap 2 dtk.
+      // Enemy shots show on the minimap for 2s.
       const b = s.bots[ev.botId];
       if (b) b._lastShotSeen = s.time;
     }
@@ -85,13 +91,13 @@ function frame(now) {
   const frameDt = Math.min(0.1, (now - lastT) / 1000);
   lastT = now;
   const cmd = input.poll();
-  // Sensitivitas mouse menyempit dengan FOV saat ADS (fov/75; sniper ~1/3).
+  // Mouse sensitivity narrows with FOV while ADS (fov/75; sniper ~1/3).
   input.applyLook(s.player, sens * adsSensScale(camera.fov));
-  // Tembakan otomatis: tahan klik = tembak terus (senjata auto) / semi = sekali per klik.
+  // Auto fire: hold click = keep firing (auto weapons) / semi = once per click.
   const w = curWeapon(s);
   const wantFire = cmd.fire && s.phase === 'live' && s.player.alive;
   if (wantFire && w && !CFG.WEAPONS[w.id].auto) {
-    // Semi-auto: hanya pada transisi klik (input menyimpan edge di cmd.fireEdge).
+    // Semi-auto: only on the click edge (input stores the edge in cmd.fireEdge).
     cmd.fire = cmd.fire && !cmd._fired;
     cmd._fired = true;
   } else if (!cmd.fire) cmd._fired = false;
