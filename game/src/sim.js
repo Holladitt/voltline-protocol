@@ -36,20 +36,27 @@ export function tick(s, cmd, dt) {
   // 1. Input -> pemain.
   tickPlayer(s, cmd, dt);
   if (cmd.fire && s.phase === 'live') firePlayer(s, s.time);
-  if (cmd.reload) startReload(s);
+  // ADS batal bila: reload dimulai, senjata diganti, granat dilempar, atau mati.
+  // cmd.ads ikut dibersihkan supaya ADS tidak langsung nyala lagi di tick berikut
+  // (input hanya menyalakan cmd.ads saat klik kanan ditekan ulang).
+  if (cmd.reload && startReload(s)) cmd.ads = false;
   if (cmd.slot) {
+    const before = p.slot;
     if (cmd.slot === 'primary' && p.primary) p.slot = 'primary';
     if (cmd.slot === 'secondary') p.slot = 'secondary';
+    if (p.slot !== before) cmd.ads = false;
   }
   if (cmd.grenade) {
     const kind = cmd.grenade;
     if (p.grenades[kind] > 0 && s.phase === 'live') {
       p.grenades[kind]--;
       throwGrenade(s, p, kind, p.x, p.y + 1.5, p.z, p.yaw, p.pitch + 0.2);
+      cmd.ads = false;
     }
   }
+  if (!p.alive) cmd.ads = false;
   // ADS (klik kanan): scope sniper 4x / DMR 2x, gerak melambat, ambience dipotong.
-  p.ads = !!cmd.ads;
+  p.ads = !!cmd.ads && p.alive;
   const w = curWeapon(s);
   if (w) tickReload(w, dt);
 

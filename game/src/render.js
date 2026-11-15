@@ -15,7 +15,18 @@ let botMeshes = [], viewmodel = null, viewmodelParts = {};
 let tracers = [], smokes = [], muzzle = null, explosion = null, bombMesh = null;
 let siteLights = [], siteRings = [], mapGroup = null;
 let tmpV = new V3(), tmpV2 = new V3();
-let lastWeaponId = '', adsFov = 70;
+
+// FOV ADS (fungsi murni, tanpa DOM — bisa diuji headless):
+// dasar 75 -> 55 tanpa scope, DMR 2x -> 38, sniper 4x -> 25.
+export function adsTargetFov(w) {
+  if (!w) return 75;
+  const sc = CFG.WEAPONS[w.id].scope;
+  return sc === 4 ? 25 : sc === 2 ? 38 : 55;
+}
+// Sensitivitas mouse ikut menyempit dengan FOV saat ADS (fov/75).
+export function adsSensScale(fov) { return fov / 75; }
+
+let lastWeaponId = '';
 
 const MAT = {};
 function mat(color, opts = {}) {
@@ -58,7 +69,7 @@ export function initRender(canvas) {
   scene = new THREE.Scene();
   scene.background = new THREE.Color(0x0b1026);
   scene.fog = new THREE.Fog(0x0b1026, 55, 95);
-  camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.08, 220);
+  camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.08, 220);
   camera.rotation.order = 'YXZ';
   window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
@@ -152,7 +163,7 @@ function buildBotMesh(team) {
   const headC = team === 'you' ? 0xf5f5f0 : 0xff8a1e;
   const body = box(0.72, 0.85, 0.4, mat(bodyC)); body.position.y = 0.95; g.add(body);
   const head = box(0.44, 0.4, 0.44, mat(headC)); head.position.y = 1.58; g.add(head);
-  const visor = box(0.36, 0.1, 0.05, mat(0x0b1026)); visor.position.set(0, 1.6, -0.22); g.add(visor);
+  const visor = box(0.36, 0.1, 0.05, new THREE.MeshBasicMaterial({ color: team === 'you' ? 0x7fd4ff : 0xffb020 })); visor.position.set(0, 1.6, -0.22); g.add(visor);
   const line = box(0.06, 0.8, 0.05, new THREE.MeshBasicMaterial({ color: team === 'you' ? 0x9fd8ff : 0xffd21a }));
   line.position.set(0, 0.95, 0.23); g.add(line);
   const legL = box(0.2, 0.5, 0.24, mat(0x141c33)); legL.position.set(-0.18, 0.25, 0); g.add(legL);
@@ -174,12 +185,30 @@ function buildViewmodel() {
     grip: box(0.09, 0.2, 0.1, mat(0x222222)),
     accent: box(0.11, 0.03, 0.3, new THREE.MeshBasicMaterial({ color: 0xffd21a })),
     scope: box(0.06, 0.08, 0.22, mat(0x111111)),
+    // Lensa scope: kaca tembus pandang + satu titik reticle emissive di tengah.
+    lens: new THREE.Mesh(new THREE.PlaneGeometry(0.05, 0.05),
+      new THREE.MeshLambertMaterial({ color: 0x9fd8ff, transparent: true, opacity: 0.25 })),
+    reticle: box(0.014, 0.014, 0.004, new THREE.MeshBasicMaterial({ color: 0xffd21a })),
+    // Tangan voxel + lengan bawah: parent ke grup viewmodel yang sama, jadi
+    // ikut recoil kick, walk bob, dan reload dip. Tangan di bawah garis bidik.
+    handR: box(0.09, 0.09, 0.13, mat(0x1f2a3a)),
+    foreR: box(0.09, 0.09, 0.34, mat(0x2e6db4)),
+    handL: box(0.09, 0.09, 0.12, mat(0x1f2a3a)),
+    foreL: box(0.09, 0.09, 0.32, mat(0x2e6db4)),
   };
   viewmodelParts.body.position.set(0.28, -0.26, -0.55);
   viewmodelParts.barrel.position.set(0.28, -0.24, -0.95);
   viewmodelParts.grip.position.set(0.28, -0.36, -0.4);
   viewmodelParts.accent.position.set(0.28, -0.19, -0.55);
   viewmodelParts.scope.position.set(0.28, -0.15, -0.6);
+  viewmodelParts.lens.position.set(0.28, -0.15, -0.712);
+  viewmodelParts.reticle.position.set(0.28, -0.15, -0.718);
+  viewmodelParts.handR.position.set(0.28, -0.37, -0.4);
+  viewmodelParts.foreR.position.set(0.3, -0.47, -0.18);
+  viewmodelParts.foreR.rotation.x = 0.45;
+  viewmodelParts.handL.position.set(0.28, -0.33, -0.72);
+  viewmodelParts.foreL.position.set(0.22, -0.44, -0.55);
+  viewmodelParts.foreL.rotation.x = 0.4;
   for (const k in viewmodelParts) viewmodel.add(viewmodelParts[k]);
   // Muzzle flash: sprite kuning 1 frame.
   muzzle = new THREE.Mesh(new THREE.PlaneGeometry(0.3, 0.3),
@@ -244,14 +273,11 @@ export function render(s, dt, time) {
       p.z + (Math.random() - 0.5) * shake);
     camera.rotation.set(p.pitch, p.yaw, 0);
   }
-  // FOV: ADS sniper 4x / DMR 2x.
+  // FOV: dasar 75; ADS 55 (tanpa scope) / 38 (DMR 2x) / 25 (sniper 4x).
+  // Lerp tiap frame + updateProjectionMatrix selama FOV masih bergerak.
   const w = curWeapon(s);
-  let targetFov = 70;
-  if (p.ads && w) {
-    const sc = CFG.WEAPONS[w.id].scope;
-    targetFov = sc === 4 ? 22 : sc === 2 ? 38 : 62;
-  }
-  if (Math.abs(camera.fov - targetFov) > 0.5) {
+  const targetFov = adsTargetFov(p.ads ? w : null);
+  if (Math.abs(camera.fov - targetFov) > 0.05) {
     camera.fov += (targetFov - camera.fov) * Math.min(1, dt * 10);
     camera.updateProjectionMatrix();
   }
@@ -327,9 +353,13 @@ function updateViewmodel(s, dt, time) {
     viewmodelParts.barrel.scale.z = L / 0.4;
     viewmodelParts.body.scale.x = Wd / 0.1;
     viewmodelParts.scope.visible = id === 'busur' || id === 'jarum';
+    viewmodelParts.lens.visible = viewmodelParts.scope.visible;
+    viewmodelParts.reticle.visible = viewmodelParts.scope.visible;
     viewmodelParts.accent.visible = id !== 'percik';
   }
   const p = s.player;
+  // Zoom sniper 4x: viewmodel (termasuk tangan) sembunyi di balik scope overlay HUD.
+  viewmodel.visible = !(p.ads && w && CFG.WEAPONS[w.id].scope === 4);
   // Recoil kick + reload dip + bob jalan.
   const kick = w ? (w.spreadBloom || 0) * 0.06 : 0;
   const reloading = w && w.reloading > 0;
@@ -337,13 +367,19 @@ function updateViewmodel(s, dt, time) {
   viewmodel.position.y = (reloading ? -0.22 : 0) + bob;
   viewmodel.position.z = kick + (reloading ? 0.1 : 0);
   viewmodel.rotation.x = kick * 1.5 + (reloading ? 0.5 : 0);
-  // ADS: viewmodel ke tengah.
+  // ADS: viewmodel ke tengah (semua bagian, termasuk tangan & lensa, ikut).
   const adsK = p.ads ? 1 : 0;
   viewmodelParts.body.position.x += ((p.ads ? 0 : 0.28) - viewmodelParts.body.position.x) * Math.min(1, dt * 12);
   viewmodelParts.barrel.position.x = viewmodelParts.body.position.x;
   viewmodelParts.grip.position.x = viewmodelParts.body.position.x;
   viewmodelParts.accent.position.x = viewmodelParts.body.position.x;
   viewmodelParts.scope.position.x = viewmodelParts.body.position.x;
+  viewmodelParts.lens.position.x = viewmodelParts.body.position.x;
+  viewmodelParts.reticle.position.x = viewmodelParts.body.position.x;
+  viewmodelParts.handR.position.x = viewmodelParts.body.position.x;
+  viewmodelParts.foreR.position.x = viewmodelParts.body.position.x + 0.02;
+  viewmodelParts.handL.position.x = viewmodelParts.body.position.x;
+  viewmodelParts.foreL.position.x = viewmodelParts.body.position.x - 0.06;
   // Muzzle flash memudar.
   if (muzzle) muzzle.material.opacity = Math.max(0, muzzle.material.opacity - dt * 12);
 }

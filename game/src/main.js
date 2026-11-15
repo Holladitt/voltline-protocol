@@ -16,13 +16,13 @@ import { buy, autoBuy } from './economy.js';
 import { startMatch } from './round.js';
 import { initHUD, updateHUD, buildBuyMenu, noteRoundWinner } from './hud.js';
 import { createInput } from './input.js';
-import { initRender, render, consumeRenderEvent } from './render.js';
+import { initRender, render, consumeRenderEvent, adsSensScale } from './render.js';
 import { initAudio, resumeAudio, setMuted, isMuted, setVolume, setAiming, consumeAudioEvent } from './audio.js';
 
 const canvas = document.getElementById('game');
 const s = createState();
 const input = createInput(canvas);
-const { renderer } = initRender(canvas);
+const { renderer, camera } = initRender(canvas);
 
 let lastT = performance.now();
 let sens = 1;
@@ -78,7 +78,8 @@ function frame(now) {
   const frameDt = Math.min(0.1, (now - lastT) / 1000);
   lastT = now;
   const cmd = input.poll();
-  input.applyLook(s.player, sens);
+  // Sensitivitas mouse menyempit dengan FOV saat ADS (fov/75; sniper ~1/3).
+  input.applyLook(s.player, sens * adsSensScale(camera.fov));
   // Tembakan otomatis: tahan klik = tembak terus (senjata auto) / semi = sekali per klik.
   const w = curWeapon(s);
   const wantFire = cmd.fire && s.phase === 'live' && s.player.alive;
