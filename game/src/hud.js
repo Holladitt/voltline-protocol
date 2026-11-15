@@ -1,7 +1,5 @@
-// VOLTLINE PROTOCOL — hud.js
-// HUD: HTML panel above the canvas. Strings & DOM only update when their value
-// changes (last-* cache). 160px minimap + compass strip. Buy menu, main menu
-// (explainer poster), round-end & match-end overlays.
+// VOLTLINE PROTOCOL — hud.js: HTML panel above the canvas. DOM updates only
+// on value change (last-* cache). 160px minimap + compass; buy/menu/round overlays.
 import { CFG, SITE_NAMES, TEAM_NAMES, TEAM_SHORT } from './config.js';
 import { shopItems } from './economy.js';
 import { curWeapon } from './state.js';

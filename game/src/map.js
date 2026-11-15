@@ -43,6 +43,11 @@ export const BOXES = [
   { x0: 13.2, z0: 14.3, x1: 14.8, z1: 15.9, h: 1.4 },
   { x0: 27.2, z0: 5.2, x1: 28.8, z1: 6.8, h: 1.2 },
   { x0: -15, z0: 3.2, x1: -13.4, z1: 4.8, h: 1.2 },
+  // v1.5.4 cover: mid crates breaking sightlines, clear of waypoints/holds/spawns.
+  { x0: 0, z0: -6.5, x1: 2, z1: -5, h: 2 },
+  { x0: -2, z0: 6, x1: 0, z1: 7.5, h: 2 },
+  { x0: -13, z0: -3, x1: -11, z1: -1.5, h: 2 },
+  { x0: 11, z0: 1.5, x1: 13, z1: 3, h: 2 },
 ];
 
 export const SITES = [
@@ -64,19 +69,15 @@ export const SPAWNS = {
 // Waypoint graph for bots. Node: [x, z]. Edge: index pair.
 // RULE: an edge must NEVER cut through a wall — mid <-> north/south terrace
 // routes only pass through gaps (north: x -22..-14 & 6..14; south: x -18..-8 & 10..18).
-// WP4 shifted to (0,4): (0,0) sits exactly inside the relay pillar, bots never arrive.
-// WP18 moved to (14,13): (14,14) sat inside the expanded south-lane cover.
-// WP22 nudged to (-12.5,5.5): (-13,5) grazed the expanded low block.
+// WP4 (0,4): (0,0) is inside the relay pillar. WP18 (14,13) + WP22
+// (-12.5,5.5) nudged clear of cover boxes.
 export const WP = [
   [-29, 0], [-24, 0], [-16, 0], [-8, 0], [0, 4], [8, 0], [16, 0], [24, 0], [29, 0],
   [-26, -14], [-20, -14], [-12, -14], [12, -14], [20, -14], [26, -14],
   [-26, 14], [-14, 14], [0, 14], [14, 13], [26, 14],
   [-16, -5], [10, -5], [-12.5, 5.5], [14, 5],
-  // Detour nodes (appended; existing indices 0-23 never shift).
-  // West mid detour around the corner wall + low block: (-6,6), (-6,0.5).
-  // East mid detour around the corner wall + low block: (6,-1), (6,-4), (13,-4).
-  // Gap midpoints: (10,-9.5) north-east, (-12.5,9.5) south-west, (14,9.5) south-east,
-  // (-18,-9.5) north-west; (-18,-14) north terrace; (-26,20) south of the south-alley wall.
+  // Detour nodes (appended; indices 0-23 never shift): west/east mid detours
+  // around corner walls + low blocks, gap midpoints, (-18,-14) north terrace.
   [-6, 6], [-6, 0.5], [6, -1], [6, -4], [13, -4],
   [10, -9.5], [-12.5, 9.5], [14, 9.5], [-18, -9.5], [-18, -14], [-26, 20],
 ];

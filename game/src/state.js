@@ -1,7 +1,6 @@
-// VOLTLINE PROTOCOL — state.js
-// The ONLY place state is created and reset. Every module receives a reference
-// to this object; no value is duplicated in two places. Only sim.js
-// writes gameplay state; hud.js and render.js only read it.
+// VOLTLINE PROTOCOL — state.js: the ONLY place state is created/reset.
+// No value duplicated in two places. Only sim.js writes gameplay state;
+// hud.js and render.js only read it.
 import { CFG } from './config.js';
 
 export const BOT_DEFS = [

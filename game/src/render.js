@@ -1,9 +1,6 @@
-// VOLTLINE PROTOCOL — render.js
-// What you see: the three.js scene built from state (read-only). Low-poly night
-// blue + volt-yellow + glass-white map, one warm directional + cold ambient,
-// thin fog from 60 m. Big-headed voxel bots, per-weapon viewmodels,
-// tracer/muzzle/smoke/explosion from fixed pools (<400 meshes, 60 fps target).
-// Render NEVER writes gameplay state.
+// VOLTLINE PROTOCOL — render.js: three.js scene from state (read-only).
+// Low-poly night-blue + volt-yellow map; voxel bots, viewmodels, tracer/
+// muzzle/smoke/explosion from fixed pools (<400 meshes, 60 fps). Never writes state.
 import * as THREE from 'three';
 import { CFG, SITE_NAMES } from './config.js';
 import { BOXES, SITES, GLASS_ZONES } from './map.js';
@@ -12,7 +9,7 @@ import { curWeapon } from './state.js';
 const V3 = THREE.Vector3;
 let renderer, scene, camera;
 let botMeshes = [], viewmodel = null, viewmodelParts = {};
-let tracers = [], smokes = [], muzzle = null, explosion = null, bombMesh = null;
+let tracers = [], smokes = [], flashes = [], muzzle = null, explosion = null, bombMesh = null;
 let siteLights = [], siteRings = [], mapGroup = null;
 let tmpV = new V3(), tmpV2 = new V3();
 
@@ -160,13 +157,12 @@ export function initRender(canvas) {
     renderer.setSize(window.innerWidth, window.innerHeight);
   });
 
-  // Procedural atmospheric skybox: dusk gradient + sun (no external assets).
+  // Procedural skybox: gradient + sun (no external assets).
   const sky = new THREE.Mesh(new THREE.SphereGeometry(190, 24, 16),
     new THREE.MeshBasicMaterial({ map: skyTexture(), side: THREE.BackSide, fog: false }));
   scene.add(sky);
 
-  // Bright daytime golden-hour light: strong sun + raised ambient/hemisphere.
-  // The sun casts sharp shadows; volt-yellow accents stay the brand colour.
+  // Golden-hour sun + ambient/hemisphere; sharp shadows, volt-yellow accents.
   const sun = new THREE.DirectionalLight(0xffe9b0, 2.6);
   sun.position.set(-30, 40, -20);
   sun.castShadow = true;
@@ -196,7 +192,7 @@ function buildMap() {
   mapGroup.add(floor);
   // Yellow circuit lines on the floor (thin emissive strips).
   const stripMat = new THREE.MeshBasicMaterial({ color: 0xffd21a });
-  for (const [x, z, w, d] of [[0, 0, 60, 0.12], [0, -14, 44, 0.12], [0, 14, 44, 0.12], [-20, -7, 0.12, 14], [20, -7, 0.12, 14]]) {
+  for (const [x, z, w, d] of [[0, 0, 60, 0.12], [0, -14, 44, 0.12], [0, 14, 44, 0.12], [-20, -7, 0.12, 14], [20, -7, 0.12, 14], [1, -5.75, 4, 0.12], [-12, -2.25, 0.12, 5], [-20, -11, 8, 0.12], [19, -11, 6, 0.12], [-1, 7.8, 4, 0.12], [13.3, 2.25, 0.12, 5]]) {
     const s = new THREE.Mesh(new THREE.PlaneGeometry(w, d), stripMat);
     s.rotation.x = -Math.PI / 2; s.position.set(x, 0.02, z);
     mapGroup.add(s);
@@ -249,7 +245,7 @@ function buildMap() {
   });
   // Series-code stencils on the vertical side of crates/containers at eye level
   // (diegetic texture). Face: S = +z, N = -z, E = +x, W = -x.
-  const STENCILS = [[15, 'IC-04', 'S'], [16, 'SEC-9', 'E'], [17, 'VOLT-7', 'W'], [20, 'RLY-2', 'S'], [22, 'KBL-11', 'S'], [24, 'GRD-5', 'N']];
+  const STENCILS = [[15, 'IC-04', 'S'], [16, 'SEC-9', 'E'], [17, 'VOLT-7', 'W'], [20, 'RLY-2', 'S'], [22, 'KBL-11', 'S'], [24, 'GRD-5', 'N'], [27, 'CVR-1', 'S'], [28, 'CVR-2', 'N'], [29, 'CVR-3', 'E'], [30, 'CVR-4', 'W'], [0, 'VOLT-1', 'S'], [1, 'VOLT-2', 'N']];
   for (const [bi, code, face] of STENCILS) {
     const b = BOXES[bi];
     if (!b) continue;
@@ -261,6 +257,14 @@ function buildMap() {
     else if (face === 'E') { st.rotation.y = Math.PI / 2; st.position.set(b.x1 + 0.02, y, (b.z0 + b.z1) / 2); }
     else { st.rotation.y = -Math.PI / 2; st.position.set(b.x0 - 0.02, y, (b.z0 + b.z1) / 2); }
     mapGroup.add(st);
+  }
+  // Floor debris: small visual-only crates tucked in corners (no collision).
+  for (const [x, z, s] of [[-31, 20, 0.7], [31, -20, 0.6], [-31, -20, 0.6], [31, 20, 0.7], [-31, 8, 0.5], [31, -8, 0.5]]) {
+    const d = box(s, s * 0.6, s, mat(0x2a3348)); d.position.set(x, s * 0.3, z); d.rotation.y = 0.5; mapGroup.add(d);
+  }
+  // Wall lamps: warm glow strips on the north/south outer walls.
+  for (const [x, z] of [[-20, -21.9], [0, -21.9], [20, -21.9], [-20, 21.9], [0, 21.9], [20, 21.9]]) {
+    const l = box(0.5, 0.25, 0.08, new THREE.MeshBasicMaterial({ color: 0xfff2b0 })); l.position.set(x, 2.8, z); mapGroup.add(l);
   }
   // Central relay pillar (small glowing tower).
   const tower = box(0.5, 6, 0.5, new THREE.MeshBasicMaterial({ color: 0xffd21a }));
@@ -281,8 +285,9 @@ function buildBotMesh(team) {
   // Friendly blue deepened (0x2b8fd9) so it stays readable in the bright daytime palette.
   const bodyC = team === 'you' ? 0x2b8fd9 : 0xff5a1a;
   const headC = team === 'you' ? 0xf5f5f0 : 0xff8a1e;
-  const body = box(0.72, 0.85, 0.4, mat(bodyC)); body.position.y = 0.95; g.add(body);
-  const head = box(0.44, 0.4, 0.44, mat(headC)); head.position.y = 1.58; g.add(head);
+  const foe = team !== 'you';
+  const body = box(0.72, 0.85, 0.4, foe ? mat(bodyC, { emissive: 0x8a1e00 }) : mat(bodyC)); body.position.y = 0.95; g.add(body);
+  const head = box(0.44, 0.4, 0.44, foe ? mat(headC, { emissive: 0x7a2e00 }) : mat(headC)); head.position.y = 1.58; g.add(head);
   const visor = box(0.36, 0.1, 0.05, new THREE.MeshBasicMaterial({ color: team === 'you' ? 0x7fd4ff : 0xffb020 })); visor.position.set(0, 1.6, -0.22); g.add(visor);
   const line = box(0.06, 0.8, 0.05, new THREE.MeshBasicMaterial({ color: team === 'you' ? 0x9fd8ff : 0xffd21a }));
   line.position.set(0, 0.95, 0.23); g.add(line);
@@ -317,8 +322,7 @@ function buildViewmodel() {
     stripe: box(0.115, 0.02, 0.3, new THREE.MeshBasicMaterial({ color: 0xffd21a })),
     // Tactical knife blade (slot 3): only visible in the melee slot.
     blade: box(0.02, 0.3, 0.07, mat(0xcfd8e8)),
-    // Voxel hands + forearms: parented to the same viewmodel group, so they
-    // follow the recoil kick, walk bob, and reload dip. Hands below the sight line.
+    // Voxel hands + forearms follow recoil, walk bob, reload dip. Below sight line.
     // Tactical gloves: dark + knuckle accents.
     handR: box(0.09, 0.09, 0.13, mat(0x1f2a3a)),
     knuckR: box(0.095, 0.02, 0.06, mat(0x0a0a0a)),
@@ -388,6 +392,12 @@ function buildPools() {
     line.frustumCulled = false;
     scene.add(line);
     tracers.push({ line, t: 0 });
+  }
+  // Bot muzzle flashes: starburst sprites at the shooter's muzzle (pool of 6).
+  const ft = starburstTexture();
+  for (let i = 0; i < 6; i++) {
+    const f = new THREE.Sprite(new THREE.SpriteMaterial({ map: ft, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending }));
+    f.scale.setScalar(0.9); scene.add(f); flashes.push({ f, t: 0 });
   }
   // Smoke: 48 soft spheres — round from every angle (a sprite reads as a
   // flat blue rectangle when it fills the camera).
@@ -503,8 +513,12 @@ export function render(s, dt, time) {
 
   // Tracers & smoke & explosion age out.
   for (const t of tracers) {
-    if (t.t > 0) { t.t -= dt; t.line.material.opacity = Math.max(0, t.t / 0.12); }
+    if (t.t > 0) { t.t -= dt; t.line.material.opacity = Math.max(0, t.t / 0.2); }
     else t.line.material.opacity = 0;
+  }
+  for (const f of flashes) {
+    if (f.t > 0) { f.t -= dt; f.f.material.opacity = Math.max(0, f.t / 0.08); }
+    else f.f.material.opacity = 0;
   }
   updateSmokes(s, dt);
   const ex = explosion.userData;
@@ -619,12 +633,19 @@ export function consumeRenderEvent(s, ev) {
       pos[0] = ev.x0; pos[1] = ev.y0; pos[2] = ev.z0;
       pos[3] = ev.x1; pos[4] = ev.y1; pos[5] = ev.z1;
       t.line.geometry.attributes.position.needsUpdate = true;
-      t.line.material.color.setHex(ev.foe ? 0xff8a1e : 0xfff6c9);
+      t.line.material.color.setHex(ev.foe ? 0xffd76a : 0xfff6c9);
       t.line.material.opacity = 1; // tracer core at full brightness
-      t.t = 0.12;
+      t.t = 0.2;
       break;
     }
-    case 'shot': if (muzzle && ev.own) muzzle.material.opacity = 1; break;
+    case 'shot': {
+      if (ev.own) { if (muzzle) muzzle.material.opacity = 1; break; }
+      // Bot shot: flash a starburst sprite at the muzzle for ~80 ms.
+      const f = flashes.find((x) => x.t <= 0) || flashes[0];
+      f.f.position.set(ev.x, ev.y, ev.z);
+      f.f.material.opacity = 1; f.t = 0.08;
+      break;
+    }
     case 'planted': {
       explosion.position.set(ev.x || s.bomb.x, 0.5, ev.z || s.bomb.z);
       break;

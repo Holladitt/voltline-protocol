@@ -1,7 +1,6 @@
-// VOLTLINE PROTOCOL — weapons.js
-// Weapons: data from config, player fire (hitscan + spread + recoil),
-// reload, slot switching, and bot fire (accuracy by range & difficulty).
-// Spread: still < moving (2.5-4x) < crouch -20-30%; 0.25 s settle after stopping.
+// VOLTLINE PROTOCOL — weapons.js: data from config; player fire (hitscan +
+// spread + recoil), reload, slots, bot fire (accuracy by range & difficulty).
+// Spread: still < moving (2.5-4x) < crouch -20-30%; 0.25 s settle after stop.
 import { CFG } from './config.js';
 import { rayShoot, calcDamage, applyDamage } from './combat.js';
 import { hasLOS } from './map.js';

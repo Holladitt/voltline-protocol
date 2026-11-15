@@ -121,11 +121,9 @@ function startDemo(s) {
     botBuy(s, b);
     b.hp = 100; b.alive = true;
   }
-  // Instant action (demo only — spawnBots()/SPAWNS untouched): stage both
-  // groups close together around the Volt Corridor / Site A approach, with
-  // clear line of sight between them, so a firefight (tracer, muzzle flash,
-  // hitmarker) is visible within 1-2 seconds of load. Every spot was verified
-  // clear of BOXES: collides(x, z, 0.38, 0) === false (guarded at runtime too).
+  // Instant action (demo only): stage both groups close together around the
+  // Volt Corridor / Site A approach with clear LOS, so a firefight is visible
+  // within 1-2 s of load. Spots verified clear of BOXES (guarded at runtime).
   const atkSpots = [[-8, -3], [-6, 0], [-6, 3], [-9, -1]]; // west corridor mouth
   const defSpots = [[2, -6], [4, -4], [6, -7], [3, -8]]; // Site A approach / east corridor
   let ai = 0, di = 0;

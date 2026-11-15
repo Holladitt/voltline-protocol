@@ -1,8 +1,6 @@
-// VOLTLINE PROTOCOL — round.js
-// Round flow: buy 15 -> freeze 5 -> live 100 -> end 6. Plant 3 s (E),
-// defuse 5/2.5 s, bomb explodes 35 s after plant, timeout without plant =
-// defenders win. First-to-7, max 12 rounds, halftime at 6, OT win by 2 (max 3),
-// then a draw. Sides swap after round 6 (intermission 8 s).
+// VOLTLINE PROTOCOL — round.js: buy 15 -> freeze 5 -> live 100 -> end 6.
+// Plant 3 s (E), defuse 5/2.5 s, bomb explodes 35 s after plant, timeout =
+// defenders win. First-to-7, max 12, halftime 6, OT win by 2 (max 3), draw after.
 import { CFG, SITE_NAMES } from './config.js';
 import { resetRound, emit, radio } from './state.js';
 import { spawnBots, botBuy } from './bots.js';

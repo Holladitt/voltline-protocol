@@ -1,7 +1,6 @@
-// VOLTLINE PROTOCOL — combat.js
-// Pure hit detection: slab raycast vs map boxes + bot body/head boxes.
-// No visuals, no sound — results arrive as events in state.events.
-// Head = smaller box above the body; all Y ranges are absolute.
+// VOLTLINE PROTOCOL — combat.js: pure hit detection (slab raycast vs map
+// boxes + bot body/head boxes). No visuals/sound — results as events.
+// Head = smaller box above the body; all Y ranges absolute.
 import { CFG } from './config.js';
 import { rayWalls, hasLOS } from './map.js';
 import { emit, radio } from './state.js';

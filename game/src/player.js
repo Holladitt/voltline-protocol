@@ -1,7 +1,6 @@
-// VOLTLINE PROTOCOL — player.js
-// Player movement: acceleration, friction, crouch, jump, per-axis AABB collision
-// (slides along walls). Speeds: run 5.5, walk (Shift) 4.2, crouch 2.2.
-// Footsteps emit sound events (bot hearing: 12 m run / 8 m walk / 3 m crouch).
+// VOLTLINE PROTOCOL — player.js: movement (accel, friction, crouch, jump,
+// per-axis AABB collision, slides along walls). Run 5.5, walk 4.2, crouch 2.2.
+// Footsteps emit sound (bot hearing: 12 m run / 8 m walk / 3 m crouch).
 import { CFG } from './config.js';
 import { collides, inSite } from './map.js';
 import { emit } from './state.js';

@@ -1,8 +1,6 @@
-// VOLTLINE PROTOCOL — audio.js
-// All sounds are synthesized WebAudio: one AudioContext (first gesture),
-// one master gain, one reused 1 s white-noise buffer.
-// No audio files. Every audio cue has a visual counterpart in the HUD.
-// Events are consumed from state.events by main.js (consumeEvents).
+// VOLTLINE PROTOCOL — audio.js: all sounds synthesized WebAudio (one
+// AudioContext, master gain, reused 1 s noise buffer). No audio files;
+// every cue has a visual HUD counterpart. Events from state.events.
 let ctx = null, master = null, noiseBuf = null, muted = false, vol = 0.7;
 let windSrc = null, windGain = null;
 

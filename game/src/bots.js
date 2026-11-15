@@ -1,10 +1,7 @@
-// VOLTLINE PROTOCOL — bots.js
-// 4v4 bot AI: patrol/hold/engage/retreat/plant/defuse/buy state machine,
-// per-round roles (entry/support/lurker/anchor/flex), vision cone 100°/70°,
-// sight 40 m open / 25 m corridor, 2.5 s memory, NO wallhack:
-// LOS checked by raycast, sound gives only rough direction ±30° + range band,
-// smoke fully blocks shooting. Friendly bots hold fire 0.5 s & stop after
-// 2 player hits on the same target.
+// VOLTLINE PROTOCOL — bots.js: 4v4 AI (patrol/hold/engage/retreat/plant/
+// defuse/buy), roles per round, vision 100°/70°, sight 40 m open / 25 m
+// corridor, 2.5 s memory, NO wallhack: LOS by raycast, sound ±30° + range,
+// smoke blocks shooting. Friendlies hold fire 0.5 s, stop after 2 player hits.
 import { CFG } from './config.js';
 import { findRoute, WP, hasLOS, collides, clearLine, inSite, siteOf, distToSite } from './map.js';
 import { fireBot, startReloadBot, tickReload, giveBotWeapon } from './weapons.js';
@@ -151,12 +148,9 @@ function turnToward(yaw, target, maxStep) {
   return yaw + Math.sign(d) * maxStep;
 }
 
-// Follow the live route; true when the final destination is reached.
-// The waypoint list is only the middle of the trip: once it is exhausted
-// the bot walks the stored destination itself (the final leg). A route
-// whose waypoints are exhausted is NOT arrival — arrival is reaching
-// (destX, destZ). A final leg with no clear line is reported blocked,
-// never arrival.
+// Follow the live route; true on reaching (destX, destZ). Waypoints are only
+// the middle of the trip — the bot then walks the final leg itself. A route
+// with exhausted waypoints is NOT arrival; a final leg with no clear line is blocked.
 function followRoute(s, b, speed, dt) {
   if (b.routeState === 'done') return true;
   if (b.routeState !== 'go') return false;
@@ -193,21 +187,19 @@ function nearestOpenWP(x, z, y) {
   return best;
 }
 
-// Plan a route to (tx, tz). Exported for the navigation regression tests.
-// Sets b.routeState to 'go' (live route) or 'blocked' (destination
-// unreachable). A destination inside a box, or with no waypoint path to it,
-// is 'blocked' — never silently treated as reached.
+// Plan a route to (tx, tz); exported for the nav regression tests. Sets
+// routeState 'go' or 'blocked' (destination inside a box, or no waypoint
+// path — never silently treated as reached).
 export function setRouteTo(s, b, tx, tz) {
   b.destX = tx; b.destZ = tz;
   b.route = []; b.routeI = 0; b.routeState = 'blocked';
   // The destination itself must be standable.
   if (collides(tx, tz, 0.38, b.y)) return;
-  // Straight shot: no waypoints needed when the direct line is clear.
-  // This also covers the same-waypoint case, where the BFS route is empty.
+  // Straight shot when the direct line is clear (also covers the
+  // same-waypoint case, where the BFS route is empty).
   if (clearLine(b.x, b.z, tx, tz, b.y, 0.38)) { b.routeState = 'go'; return; }
-  // Otherwise route through the waypoint graph, starting from the nearest
-  // waypoint the bot can reach. BFS drops its start node, so the bot still
-  // has to stand on it first — prepend it.
+  // Else route via the waypoint graph from the nearest reachable waypoint.
+  // BFS drops its start node, so prepend it (the bot must stand on it first).
   const from = nearestOpenWP(b.x, b.z, b.y);
   const to = nearestOpenWP(tx, tz, b.y);
   if (from < 0 || to < 0) return;
@@ -267,10 +259,8 @@ export function tickBot(s, b, dt) {
       break;
     }
     case 'plant': {
-      // Plant: 3 s countdown. Completion (plantBomb) happens in the sim.js
-      // block right after this tick — DO NOT complete it here, otherwise
-      // plantBomb is never called (v1 bug: bot "planted" but the bomb
-      // was never planted).
+      // Plant: 3 s countdown. plantBomb completes in sim.js right after this
+      // tick — DO NOT complete it here (v1 bug: bomb never planted).
       b.plantT += dt;
       break;
     }
@@ -288,8 +278,7 @@ export function tickBot(s, b, dt) {
         if (b.burstPause > 0) b.burstPause -= dt;
         else {
           if (b.burstLeft <= 0) b.burstLeft = Math.floor(rand(d.burst[0], d.burst[1] + 1));
-          // Friendly bot: hold the first 0.5 s when the player is aiming at the same target
-          // within 20 m, and stop when the player has already hit that target twice.
+          // Friendly: hold fire 0.5 s if the player aims at the same target (<20 m); stop after 2 player hits.
           let holdFire = false;
           if (b.team === 'you' && s.player.alive) {
             const pd = Math.hypot(tgt.x - s.player.x, tgt.z - s.player.z);
@@ -326,9 +315,7 @@ export function tickBot(s, b, dt) {
       else {
         const ri = b.routeI;
         const done = followRoute(s, b, b.role === 'lurker' ? 4.2 : 5.5, dt);
-        // Just arrived at an intermediate node: sometimes wait 1.5-2.5 s at each corner.
-        // (v1: this check ran every tick while moving, so bots crawled
-        // ~0.1 m/s and never met — 60 s demo, 0 shots fired.)
+        // At an intermediate node: sometimes wait 1.5-2.5 s (v1 ran this every tick — bots crawled).
         if (!done && b.routeI > ri && Math.random() < 0.3) b.waitT = rand(1.5, 2.5);
       }
       if (b.seenT > 0) b.state = 'engage';
@@ -336,10 +323,8 @@ export function tickBot(s, b, dt) {
     }
   }
 
-  // Anti-stuck: a patrolling bot that hasn't moved for 2.5 s while a route is
-  // live gives up on that route. It never skips a waypoint (that can cut
-  // through cover); the next patrol tick picks a fresh destination instead.
-  // This also catches the final leg, where the route list is already empty.
+  // Anti-stuck: a patrolling bot unmoved for 2.5 s on a live route gives up.
+  // Never skips a waypoint (could cut through cover); also catches the final leg.
   if (b.state === 'patrol' && b.waitT <= 0 && b.routeState === 'go') {
     const moved = Math.hypot(b.x - (b._lx ?? b.x), b.z - (b._lz ?? b.z));
     b._stuckT = moved < 0.001 ? (b._stuckT || 0) + dt : 0;
@@ -349,8 +334,7 @@ export function tickBot(s, b, dt) {
     }
   }
 
-  // 4. Plant/defuse triggered from patrol when conditions fit (also checked in round.js).
-  // Also runs in the menu phase (attract-mode demo: bot-vs-bot).
+  // 4. Plant/defuse from patrol when conditions fit (also in round.js; runs in menu demo too).
   if (b.state === 'patrol' && (s.phase === 'live' || s.phase === 'menu')) {
     const site = siteOf(b.x, b.z);
     if (isAtkTeam && site >= 0 && s.bomb.state === 'carried' && s.bomb.carrier === b.id) {

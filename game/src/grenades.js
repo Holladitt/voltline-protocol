@@ -1,7 +1,5 @@
-// VOLTLINE PROTOCOL — grenades.js
-// GLASS FOG (smoke, 18 s, radius 3.2 m) fully blocks line of sight for bots &
-// players; JOLT (flash) blinds within 25 m / 120° cone.
-// Grenades bounce simply off map boxes; no allocation in the hot loop.
+// VOLTLINE PROTOCOL — grenades.js: GLASS FOG smoke (18 s, r 3.2 m) blocks LOS;
+// JOLT flash blinds within 25 m / 120° cone. Bounce off boxes; no hot-loop alloc.
 import { CFG } from './config.js';
 import { collides, hasLOS } from './map.js';
 import { emit } from './state.js';

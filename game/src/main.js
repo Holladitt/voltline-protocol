@@ -1,8 +1,7 @@
-// VOLTLINE PROTOCOL — main.js
-// Boot & main loop. Import order = judge reading order (state, config, sim,
-// player, weapons, combat, bots, map, grenades, economy, round, hud, input,
-// render, audio). Loop: input -> fixed-step sim (60 Hz) -> consume events
-// (audio/render/hearing) -> render -> HUD. No network, no eval.
+// VOLTLINE PROTOCOL — main.js: boot & main loop. Import order = judge reading
+// order (state, config, sim, player, weapons, combat, bots, map, grenades,
+// economy, round, hud, input, render, audio). Loop: input -> sim (60 Hz) ->
+// consume events -> render -> HUD. No network, no eval.
 import { createState, resetMatch, curWeapon } from './state.js';
 import { CFG } from './config.js';
 import { stepFrame, applyHearing } from './sim.js';
