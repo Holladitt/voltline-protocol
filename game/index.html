@@ -50,7 +50,6 @@
   .hudTC { position: absolute; left: 50%; top: 12px; transform: translateX(-50%); text-align: center; padding: 8px 18px; }
   #timer { font-size: 36px; font-weight: 800; line-height: 1; }
   #phase { font-size: 13px; letter-spacing: 1px; }
-  #scoreYou { font-size: 16px; font-weight: 700; margin-top: 2px; }
   #scoreLine { font-size: 12px; color: #bbb; }
   .hudTL { position: absolute; left: 18px; top: 12px; max-width: 320px; }
   #killfeed { font-size: 14px; line-height: 1.5; padding: 8px 10px; }
@@ -64,8 +63,20 @@
   #promptTxt { font-size: 18px; font-weight: 800; color: #FFD21A; }
   #promptBarWrap { width: 220px; height: 6px; background: #333; margin-top: 6px; }
   #promptBar { height: 100%; width: 0%; background: #FFD21A; }
-  #spectate { position: absolute; left: 50%; bottom: 120px; transform: translateX(-50%);
-    padding: 8px 16px; font-size: 15px; }
+  #teamsLine { font-size: 14px; font-weight: 700; letter-spacing: 1px; }
+  #bombStatus { font-size: 13px; color: #FFD21A; font-weight: 700; min-height: 18px; }
+  #locLabel { font-size: 13px; color: #FFD21A; margin-top: 4px; padding: 4px 10px; }
+  #radio { font-size: 13px; line-height: 1.5; padding: 6px 10px; margin-top: 4px; color: #ddd; }
+  #faction { font-size: 13px; color: #FFD21A; font-weight: 700; letter-spacing: 1px; }
+  #armorBarWrap { width: 180px; height: 8px; background: #222; border-radius: 4px; margin: 6px 0; }
+  #armorBar { height: 100%; background: #3FA9F5; border-radius: 4px; width: 0%; }
+  #kitBadge { color: #111; background: #FFD21A; font-weight: 800; font-size: 12px; padding: 2px 6px; border-radius: 3px; }
+  #slotBar { font-size: 13px; color: #ccc; margin-top: 4px; }
+  #slotBar b { font-weight: 400; padding: 0 2px; }
+  #slotBar b.on { color: #FF8A1E; font-weight: 800; }
+  #aiPilot { position: fixed; left: 50%; bottom: 210px; transform: translateX(-50%); z-index: 10;
+    font-size: 13px; letter-spacing: 1px; color: #FFD21A; background: rgba(8,12,28,0.6);
+    border: 1px solid rgba(255,210,26,0.4); border-radius: 4px; padding: 6px 12px; pointer-events: none; }
   /* ---------- Buy menu ---------- */
   #buymenu { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 760px; max-width: 94vw;
     padding: 18px 22px; background: rgba(8, 12, 28, 0.92); z-index: 8; pointer-events: auto; display: none; }
@@ -82,12 +93,17 @@
     font-size: 15px; border-radius: 5px; cursor: pointer; }
   button:hover { background: #FFD21A; }
   /* ---------- Menu utama ---------- */
-  #menu { position: fixed; inset: 0; z-index: 10; display: flex; align-items: center; justify-content: center;
-    background: linear-gradient(180deg, rgba(11,16,38,0.32), rgba(11,16,38,0.62)); }
-  .menuBox { width: 980px; max-width: 96vw; padding: 26px 30px; background: rgba(8,12,28,0.66);
-    border: 1px solid rgba(255,210,26,0.5); border-radius: 10px; }
-  .menuBox h1 { font-size: 52px; letter-spacing: 2px; color: #FFD21A; text-shadow: 0 0 18px rgba(255,210,26,0.5); }
-  .menuBox h1 span { color: #F5F5F0; }
+  #menu { position: fixed; inset: 0; z-index: 10; pointer-events: none; }
+  .menuTop { position: absolute; left: 18px; top: 16px; pointer-events: auto; padding: 12px 16px;
+    background: rgba(8,12,28,0.55); border: 1px solid rgba(255,210,26,0.4); border-radius: 8px; }
+  .menuTop h1 { font-size: 32px; letter-spacing: 2px; color: #FFD21A; text-shadow: 0 0 14px rgba(255,210,26,0.5); }
+  .menuTop h1 span { color: #F5F5F0; }
+  .menuBottom { position: absolute; left: 50%; bottom: 24px; transform: translateX(-50%); text-align: center; pointer-events: auto; }
+  #guide { position: fixed; left: 50%; top: 50%; transform: translate(-50%,-50%); width: 980px; max-width: 96vw;
+    padding: 26px 30px; background: rgba(8,12,28,0.92); border: 1px solid rgba(255,210,26,0.5);
+    border-radius: 10px; z-index: 12; display: none; }
+  #guide h1 { font-size: 36px; letter-spacing: 2px; color: #FFD21A; text-shadow: 0 0 18px rgba(255,210,26,0.5); }
+  #guide h1 span { color: #F5F5F0; }
   .tagline { font-size: 17px; color: #ccc; margin: 4px 0 16px; }
   .cols { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
   .col { padding: 12px 14px; background: rgba(255,255,255,0.05); border-radius: 6px; font-size: 14px; line-height: 1.65; }
@@ -127,31 +143,37 @@
   <div id="dmgdir"></div>
   <div id="scope"></div>
   <div class="hudBL panel">
+    <div id="faction">PEMUTUS SIRKUIT · PENYERANG</div>
     <div><span id="hp">100</span> <span style="font-size:14px">HP</span></div>
     <div id="hpbarWrap"><div id="hpbar"></div></div>
     <div id="armor">—</div>
-    <div>UANG <span id="money">$800</span></div>
+    <div id="armorBarWrap"><div id="armorBar"></div></div>
+    <div>UANG <span id="money">$800</span> <span id="kitBadge" style="display:none">DEFUSE KIT</span></div>
   </div>
   <div class="hudBR panel">
     <div id="wname">PERCIK</div>
     <div><span id="ammoMag">12</span> <span id="ammoRes">∞</span></div>
     <div id="reloadHint"></div>
-    <div id="slots"><b id="slot1">—</b> · <b id="slot2">PERCIK</b><br><span id="slot3"></span><br><span id="bombTag"></span></div>
+    <div id="slotBar"></div>
+    <div id="bombTag"></div>
   </div>
   <div class="hudTC panel">
+    <div id="teamsLine">PEMUTUS SIRKUIT ■■■■ · PENJAGA ARUS ■■■■</div>
     <div id="timer">1:40</div>
+    <div id="bombStatus"></div>
     <div id="phase">RONDE 1 — BUY PHASE</div>
-    <div id="scoreYou">ARUS 0 — 0 PEMUTUS</div>
     <div id="scoreLine"></div>
   </div>
   <div class="hudTL">
+    <canvas id="minimap" width="160" height="160"></canvas>
+    <div id="compass" class="panel"></div>
+    <div id="locLabel" class="panel">SIRKUIT KACA</div>
+  </div>
+  <div class="hudTR">
     <div id="killfeed" class="panel"></div>
     <div id="teamYou" class="panel"></div>
     <div id="teamFoe" class="panel"></div>
-  </div>
-  <div class="hudTR">
-    <canvas id="minimap" width="160" height="160"></canvas>
-    <div id="compass" class="panel"></div>
+    <div id="radio" class="panel"></div>
   </div>
   <div id="prompt" style="display:none"><div id="promptTxt"></div><div id="promptBarWrap"><div id="promptBar"></div></div></div>
   <div id="spectate" class="panel" style="display:none"><span id="specText"></span></div>
@@ -167,40 +189,54 @@
   <button id="closeBuyBtn" style="background:#333;color:#fff">TUTUP (B)</button>
 </div>
 
-<!-- Menu utama: poster penjelas satu layar -->
+<!-- Menu utama ramping: attract mode full-screen, panduan on-demand (H) -->
 <div id="menu">
-  <div class="menuBox">
+  <div class="menuTop">
     <h1>VOLTLINE <span>PROTOCOL</span></h1>
-    <div class="tagline">Lima ronde. Satu sirkuit. Jangan putus arusnya. — FPS taktis 4v4 melawan bot di atap stasiun relay <b>SIRKUIT KACA</b>.</div>
-    <div class="cols">
-      <div class="col"><h3>CARA MAIN</h3>
-        <b>WASD</b> gerak · <b>Mouse</b> aim · <b>Klik</b> tembak · <b>R</b> reload<br>
-        <b>Shift</b> jalan pelan · <b>C</b> crouch (senyap) · <b>Spasi</b> lompat<br>
-        <b>E</b> tahan: plant / defuse bom · <b>1/2</b> ganti senjata<br>
-        <b>4</b> smoke · <b>5</b> flash · <b>B</b> buy menu · <b>M</b> mute · <b>Q</b> ganti spectate</div>
-      <div class="col"><h3>MISI</h3>
-        Penyerang <b class="atk">PEMUTUS SIRKUIT</b> plant bom di <b>RELAY UTARA (A)</b> atau <b>GARDU KACA (B)</b>, lalu jaga sampai meledak (35 dtk).<br>
-        Bertahan <b class="def">PENJAGA ARUS</b> menggagalkan plant atau defuse sebelum ledakan.<br>
-        Menang ronde = <b>$3.250</b> · kalah = <b>$1.900</b> · kill = <b>$300</b>.<br>
-        First to <b>7</b>, maks 12 ronde, ganti sisi setelah ronde 6.</div>
-      <div class="col"><h3>ARSENAL</h3>
-        <b>PETIR-9</b> rifle $2.700 · <b>JARUM VOLT</b> DMR $3.100<br>
-        <b>SENGAT-9</b> SMG $1.500 · <b>BUSUR VOLT</b> sniper $4.750<br>
-        <b>SENJA-12</b> shotgun $1.100 · <b>PERCIK</b> pistol gratis<br>
-        <b>KABUT KACA</b> smoke $300 · <b>SENTAK</b> flash $300<br>
-        Headshot sakit berkali lipat. Berhenti, baru tembak — spread membesar saat lari.</div>
-    </div>
+    <div class="tagline">FPS taktis 4v4 melawan bot — <b>SIRKUIT KACA</b>. Lima ronde. Satu sirkuit.</div>
+    <div id="menuScore"></div>
+    <div id="menuDiff"></div>
+  </div>
+  <div class="menuBottom">
     <button id="startBtn">▶ DEPLOY — START MATCH</button>
     <div class="diffRow">Kesulitan bot:
       <button data-diff="recruit">RECRUIT</button>
       <button data-diff="veteran" class="sel">VETERAN</button>
       <button data-diff="elite">ELITE</button>
     </div>
-    <div id="menuScore"></div>
-    <div id="menuDiff"></div>
+    <div><button id="guideBtn" style="background:#222;color:#ddd">PANDUAN (H)</button></div>
     <div class="menuFoot">Offline · Single-player vs AI bots · three.js 0.187.0 · Lantai kaca Koridor Volt tembus pandang — lihat bayangan musuh sebelum bertemu. Lampu map jadi kuning volt saat bom ter-plant.</div>
   </div>
 </div>
+
+<!-- Panduan detail (on-demand, default tersembunyi) -->
+<div id="guide" style="display:none">
+  <h1>VOLTLINE <span>PROTOCOL</span></h1>
+  <div class="tagline">Lima ronde. Satu sirkuit. Jangan putus arusnya.</div>
+  <div class="cols">
+    <div class="col"><h3>CARA MAIN</h3>
+      <b>WASD</b> gerak · <b>Mouse</b> aim · <b>Klik</b> tembak · <b>R</b> reload<br>
+      <b>Shift</b> jalan pelan · <b>C</b> crouch (senyap) · <b>Spasi</b> lompat<br>
+      <b>E</b> tahan: plant / defuse bom · <b>1/2/3</b> ganti senjata (3 = pisau)<br>
+      <b>4</b> smoke · <b>5</b> flash · <b>B</b> buy menu · <b>M</b> mute · <b>Q</b> ganti spectate</div>
+    <div class="col"><h3>MISI</h3>
+      Penyerang <b class="atk">PEMUTUS SIRKUIT</b> plant bom di <b>RELAY UTARA (A)</b> atau <b>GARDU KACA (B)</b>, lalu jaga sampai meledak (35 dtk).<br>
+      Bertahan <b class="def">PENJAGA ARUS</b> menggagalkan plant atau defuse sebelum ledakan.<br>
+      Menang ronde = <b>$3.250</b> · kalah = <b>$1.900</b> · kill = <b>$300</b>.<br>
+      First to <b>7</b>, maks 12 ronde, ganti sisi setelah ronde 6.</div>
+    <div class="col"><h3>ARSENAL</h3>
+      <b>PETIR-9</b> rifle $2.700 · <b>JARUM VOLT</b> DMR $3.100<br>
+      <b>SENGAT-9</b> SMG $1.500 · <b>BUSUR VOLT</b> sniper $4.750<br>
+      <b>SENJA-12</b> shotgun $1.100 · <b>PERCIK</b> pistol gratis<br>
+      <b>PISAU TAKTIS</b> slot 3 — ayunan jarak dekat, damage 40<br>
+      <b>KABUT KACA</b> smoke $300 · <b>SENTAK</b> flash $300<br>
+      Headshot sakit berkali lipat. Berhenti, baru tembak — spread membesar saat lari.</div>
+  </div>
+  <div style="margin-top:16px"><button id="guideCloseBtn">TUTUP (H)</button></div>
+</div>
+
+<!-- Indikator attract mode -->
+<div id="aiPilot" style="display:none">[P] AI PILOT: ON — CLICK TO PLAY</div>
 
 <!-- Akhir ronde -->
 <div id="roundend" class="panel">

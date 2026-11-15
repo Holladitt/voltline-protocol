@@ -4,7 +4,7 @@
 // defender menang. First-to-7, maks 12 ronde, paruh 6, OT unggul 2 (maks 3),
 // lalu seri. Sisi bertukar setelah ronde 6 (intermission 8 dtk).
 import { CFG, SITE_NAMES } from './config.js';
-import { resetRound, emit } from './state.js';
+import { resetRound, emit, radio } from './state.js';
 import { spawnBots, botBuy } from './bots.js';
 import { spawnPlayer } from './player.js';
 import { awardRound } from './economy.js';
@@ -110,6 +110,7 @@ export function plantBomb(s, planter, site) {
     planter.money = Math.min(CFG.MONEY.cap, planter.money + CFG.MONEY.plant);
   }
   emit(s, 'planted', { site, by: planter === s.player ? 'KAMU' : planter.name });
+  radio(s, `${planter === s.player ? 'KAMU' : planter.name}: BOM DITANAM DI ${'AB'[site]}`, true);
 }
 
 // Bom berhasil dijinakkan.
@@ -122,6 +123,7 @@ export function defuseBomb(s, defuser) {
     s.roundStats.money += CFG.MONEY.defuse;
   }
   emit(s, 'defused', { by: defuser === s.player ? 'KAMU' : defuser.name });
+  radio(s, `${defuser === s.player ? 'KAMU' : defuser.name}: BOM DIJINAKKAN`, true);
   endRound(s, s.playerSide === 'atk' ? 'foe' : 'you', 'BOM DIJINAKKAN');
 }
 

@@ -22,6 +22,7 @@ export function createInput(canvas) {
     if (key(e) === 'KeyR') cmd.reload = true;
     if (key(e) === 'Digit1') cmd.slot = 'primary';
     if (key(e) === 'Digit2') cmd.slot = 'secondary';
+    if (key(e) === 'Digit3') cmd.slot = 'melee';
     if (key(e) === 'Digit4') cmd.grenade = 'smoke';
     if (key(e) === 'Digit5') cmd.grenade = 'flash';
     if (key(e) === 'KeyQ') cmd.specNext = true;

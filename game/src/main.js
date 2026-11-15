@@ -14,7 +14,7 @@ import './map.js';
 import './grenades.js';
 import { buy, autoBuy } from './economy.js';
 import { startMatch } from './round.js';
-import { initHUD, updateHUD, buildBuyMenu, noteRoundWinner } from './hud.js';
+import { initHUD, updateHUD, buildBuyMenu, noteRoundWinner, toggleGuide, hideGuide } from './hud.js';
 import { createInput } from './input.js';
 import { initRender, render, consumeRenderEvent, adsSensScale } from './render.js';
 import { initAudio, resumeAudio, setMuted, isMuted, setVolume, setAiming, consumeAudioEvent } from './audio.js';
@@ -27,14 +27,18 @@ const { renderer, camera } = initRender(canvas);
 let lastT = performance.now();
 let sens = 1;
 
+// DEPLOY: buang state demo/menu, mulai match sungguhan dari nol.
+function deploy() {
+  initAudio(); resumeAudio();
+  hideGuide();
+  input.requestLock();
+  resetMatch(s, s.diff);
+  startMatch(s);
+}
+
 initHUD(s, {
-  onStart: () => {
-    initAudio(); resumeAudio();
-    input.requestLock();
-    resetMatch(s, s.diff);
-    startMatch(s);
-  },
-  onRematch: () => { resetMatch(s, s.diff); startMatch(s); input.requestLock(); },
+  onStart: () => { deploy(); },
+  onRematch: () => { deploy(); },
   onMenu: () => { resetMatch(s, s.diff); document.exitPointerLock && document.exitPointerLock(); },
   onBuy: (id) => { const r = buy(s, id); if (!r.ok) flashBuyMsg(r.reason); },
   onAutoBuy: () => autoBuy(s),
@@ -49,9 +53,12 @@ function flashBuyMsg(msg) {
 }
 
 // Buka buy menu dengan B (hanya fase buy); M mute; Esc keluar pointer lock.
+// P mulai match dari menu attract; H buka/tutup panduan (menu).
 input.cb.onKey = (code) => {
   if (code === 'KeyB' && s.phase === 'buy') s.buyOpen = !s.buyOpen;
   if (code === 'KeyM') setMuted(!isMuted());
+  if (code === 'KeyP' && s.phase === 'menu') deploy();
+  if (code === 'KeyH' && s.phase === 'menu') toggleGuide();
 };
 
 // Konsumsi antrean event sekali-pakai: audio, render, hearing AI, HUD.

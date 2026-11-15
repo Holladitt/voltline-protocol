@@ -154,5 +154,6 @@ export function consumeAudioEvent(s, ev) {
     case 'kill': if (ev.attacker === 'KAMU') playHitmark(ev.head, true); break;
     case 'roundEnd': playStinger(ev.winner === 'you'); break;
     case 'playerHit': tone(200, 0.08, 'sine', 0.3); break;
+    case 'swing': burst(0.12, 'bandpass', 900, 0.4); break;
   }
 }

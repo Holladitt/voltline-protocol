@@ -7,7 +7,7 @@ import { CFG } from './config.js';
 import { tickPlayer, tickInteract } from './player.js';
 import { tickBot, tickBotHoldCheck, botHear, spawnBots, botBuy } from './bots.js';
 import { tickNades, throwGrenade } from './grenades.js';
-import { tickReload, firePlayer, startReload } from './weapons.js';
+import { tickReload, firePlayer, startReload, swingMelee } from './weapons.js';
 import { curWeapon } from './state.js';
 import { tickRound, plantBomb, defuseBomb } from './round.js';
 import { siteOf } from './map.js';
@@ -36,7 +36,10 @@ export function tick(s, cmd, dt) {
 
   // 1. Input -> pemain.
   tickPlayer(s, cmd, dt);
-  if (cmd.fire && s.phase === 'live') firePlayer(s, s.time);
+  if (cmd.fire && s.phase === 'live') {
+    if (p.slot === 'melee') swingMelee(s, s.time);
+    else firePlayer(s, s.time);
+  }
   // ADS batal bila: reload dimulai, senjata diganti, granat dilempar, atau mati.
   // cmd.ads ikut dibersihkan supaya ADS tidak langsung nyala lagi di tick berikut
   // (input hanya menyalakan cmd.ads saat klik kanan ditekan ulang).
@@ -45,6 +48,7 @@ export function tick(s, cmd, dt) {
     const before = p.slot;
     if (cmd.slot === 'primary' && p.primary) p.slot = 'primary';
     if (cmd.slot === 'secondary') p.slot = 'secondary';
+    if (cmd.slot === 'melee') p.slot = 'melee';
     if (p.slot !== before) cmd.ads = false;
   }
   if (cmd.grenade) {

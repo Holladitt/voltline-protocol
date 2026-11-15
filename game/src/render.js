@@ -40,16 +40,33 @@ function box(w, h, d, material) {
   return m;
 }
 function boardTexture(text, sub, color) {
-  const cv = document.createElement('canvas'); cv.width = 512; cv.height = 128;
+  const cv = document.createElement('canvas'); cv.width = 1024; cv.height = 256;
   const c = cv.getContext('2d');
-  c.fillStyle = '#0b1026'; c.fillRect(0, 0, 512, 128);
-  c.strokeStyle = color; c.lineWidth = 6; c.strokeRect(4, 4, 504, 120);
-  c.fillStyle = color; c.font = 'bold 56px sans-serif'; c.textAlign = 'center';
-  c.fillText(text, 256, 62);
-  c.fillStyle = '#F5F5F0'; c.font = '28px sans-serif';
-  c.fillText(sub, 256, 104);
+  c.fillStyle = '#0b1026'; c.fillRect(0, 0, 1024, 256);
+  c.strokeStyle = color; c.lineWidth = 10; c.strokeRect(8, 8, 1008, 240);
+  c.fillStyle = color; c.font = 'bold 64px sans-serif'; c.textAlign = 'center';
+  c.fillText(text, 512, 118);
+  c.fillStyle = '#F5F5F0'; c.font = '40px sans-serif';
+  c.fillText(sub, 512, 198);
   const t = new THREE.CanvasTexture(cv);
   t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+// Stensil kode seri di atas peti/kontainer: teks kuning volt di kanvas transparan.
+const STENCIL_TEX = {};
+function stencilTexture(code) {
+  if (STENCIL_TEX[code]) return STENCIL_TEX[code];
+  const cv = document.createElement('canvas'); cv.width = 256; cv.height = 80;
+  const c = cv.getContext('2d');
+  c.font = 'bold 44px sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
+  c.lineWidth = 7; c.strokeStyle = '#0b1026';
+  c.strokeText(code, 128, 42);
+  c.fillStyle = '#FFD21A';
+  c.fillText(code, 128, 42);
+  const t = new THREE.CanvasTexture(cv);
+  t.colorSpace = THREE.SRGBColorSpace;
+  STENCIL_TEX[code] = t;
   return t;
 }
 function softTexture() {
@@ -62,21 +79,21 @@ function softTexture() {
   return new THREE.CanvasTexture(cv);
 }
 
-// Skybox: gradasi senja (biru malam -> ungu -> oranye horizon) + matahari.
+// Skybox: gradasi siang cerah golden-hour (biru cerah -> kuning hangat) + matahari.
 function skyTexture() {
   const cv = document.createElement('canvas'); cv.width = 1024; cv.height = 512;
   const c = cv.getContext('2d');
   const g = c.createLinearGradient(0, 0, 0, 512);
-  g.addColorStop(0, '#0a1230');
-  g.addColorStop(0.45, '#27407a');
-  g.addColorStop(0.68, '#7a5a8a');
-  g.addColorStop(0.8, '#ff9a3c');
-  g.addColorStop(1, '#2a1a2a');
+  g.addColorStop(0, '#2f6fc4');
+  g.addColorStop(0.45, '#7db8e8');
+  g.addColorStop(0.68, '#cfe4f2');
+  g.addColorStop(0.8, '#ffd27a');
+  g.addColorStop(1, '#e8c890');
   c.fillStyle = g; c.fillRect(0, 0, 1024, 512);
-  const sg = c.createRadialGradient(720, 330, 8, 720, 330, 130);
-  sg.addColorStop(0, 'rgba(255,230,160,1)');
-  sg.addColorStop(0.25, 'rgba(255,180,80,0.8)');
-  sg.addColorStop(1, 'rgba(255,150,60,0)');
+  const sg = c.createRadialGradient(720, 300, 8, 720, 300, 130);
+  sg.addColorStop(0, 'rgba(255,250,220,1)');
+  sg.addColorStop(0.25, 'rgba(255,225,140,0.85)');
+  sg.addColorStop(1, 'rgba(255,210,120,0)');
   c.fillStyle = sg; c.fillRect(0, 0, 1024, 512);
   const t = new THREE.CanvasTexture(cv);
   t.colorSpace = THREE.SRGBColorSpace;
@@ -110,21 +127,21 @@ function pbrMat(kind) {
   if (PBR[kind]) return PBR[kind];
   let t, m;
   if (kind === 'floor') {
-    t = surfaceTexture('#1a2340', '#0d1326', 'rgba(255,255,255,0.05)', 64);
+    t = surfaceTexture('#46536e', '#232c48', 'rgba(255,255,255,0.06)', 64);
     t.map.repeat.set(8, 6); t.bump.repeat.set(8, 6);
     m = new THREE.MeshStandardMaterial({
       map: t.map, bumpMap: t.bump, bumpScale: 0.6,
       roughness: 0.9, metalness: 0.05,
     });
   } else if (kind === 'wall') {
-    t = surfaceTexture('#232c4a', '#12172c', 'rgba(255,255,255,0.04)', 85);
+    t = surfaceTexture('#5a6a8c', '#39456a', 'rgba(255,255,255,0.05)', 85);
     t.map.repeat.set(3, 2); t.bump.repeat.set(3, 2);
     m = new THREE.MeshStandardMaterial({
       map: t.map, bumpMap: t.bump, bumpScale: 0.5,
       roughness: 0.85, metalness: 0.05,
     });
   } else { // cover: plat logam sirkuit
-    t = surfaceTexture('#2e3a55', '#141a2c', 'rgba(255,210,26,0.10)', 128);
+    t = surfaceTexture('#55648a', '#2c3854', 'rgba(255,210,26,0.10)', 128);
     t.map.repeat.set(2, 2); t.bump.repeat.set(2, 2);
     m = new THREE.MeshStandardMaterial({
       map: t.map, bumpMap: t.bump, bumpScale: 0.4,
@@ -142,8 +159,8 @@ export function initRender(canvas) {
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x0b1026);
-  scene.fog = new THREE.Fog(0x0b1026, 55, 95);
+  scene.background = new THREE.Color(0x9cc4e8);
+  scene.fog = new THREE.Fog(0xcfdde8, 55, 95);
   camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.08, 220);
   camera.rotation.order = 'YXZ';
   window.addEventListener('resize', () => {
@@ -157,8 +174,9 @@ export function initRender(canvas) {
     new THREE.MeshBasicMaterial({ map: skyTexture(), side: THREE.BackSide, fog: false }));
   scene.add(sky);
 
-  // Cahaya: satu directional hangat + ambient dingin. Matahari melempar bayangan.
-  const sun = new THREE.DirectionalLight(0xffd9a0, 1.6);
+  // Cahaya golden-hour siang cerah: matahari kuat + ambient/hemisphere naik.
+  // Matahari melempar bayangan tajam; aksen volt-yellow tetap warna brand.
+  const sun = new THREE.DirectionalLight(0xffe9b0, 2.6);
   sun.position.set(-30, 40, -20);
   sun.castShadow = true;
   sun.shadow.mapSize.set(1024, 1024);
@@ -167,8 +185,8 @@ export function initRender(canvas) {
   sun.shadow.camera.near = 1; sun.shadow.camera.far = 120;
   sun.shadow.bias = -0.0004;
   scene.add(sun);
-  scene.add(new THREE.AmbientLight(0x4a5a8a, 1.0));
-  const hemi = new THREE.HemisphereLight(0x2a3a6a, 0x0b1026, 0.6);
+  scene.add(new THREE.AmbientLight(0xbfd4e8, 1.2));
+  const hemi = new THREE.HemisphereLight(0x9cc4e8, 0x8a7a5a, 0.9);
   scene.add(hemi);
 
   buildMap();
@@ -224,11 +242,11 @@ function buildMap() {
       mapGroup.add(trim);
     }
   }
-  // Papan nama site 3D + ring plant + lampu site.
+  // Papan nama site 3D (banner besar) + ring plant + lampu site.
   SITES.forEach((st, i) => {
-    const board = new THREE.Mesh(new THREE.PlaneGeometry(7, 1.75),
-      new THREE.MeshBasicMaterial({ map: boardTexture(i === 0 ? 'A · RELAY UTARA' : 'B · GARDU KACA', 'SITE ' + (i === 0 ? 'A' : 'B'), '#FFD21A') }));
-    board.position.set(st.cx, 3.4, st.cz - 2.5);
+    const board = new THREE.Mesh(new THREE.PlaneGeometry(10, 2.5),
+      new THREE.MeshBasicMaterial({ map: boardTexture(i === 0 ? 'SITE A // RELAY UTARA' : 'SITE B // GARDU KACA', '· PLANT ZONE ·', '#FFD21A') }));
+    board.position.set(st.cx, 3.0, st.cz - 2.5);
     mapGroup.add(board);
     const ring = new THREE.Mesh(new THREE.RingGeometry(st.r - 0.15, st.r, 40),
       new THREE.MeshBasicMaterial({ color: 0xff8a1e, transparent: true, opacity: 0.85, side: THREE.DoubleSide }));
@@ -238,6 +256,17 @@ function buildMap() {
     light.position.set(st.cx, 3, st.cz);
     scene.add(light); siteLights.push(light);
   });
+  // Stensil kode seri di atas peti/kontainer (diegetic texture).
+  const STENCILS = [[15, 'IC-04'], [16, 'SEC-9'], [17, 'VOLT-7'], [20, 'RLY-2'], [22, 'KBL-11'], [24, 'GRD-5']];
+  for (const [bi, code] of STENCILS) {
+    const b = BOXES[bi];
+    if (!b) continue;
+    const st = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 0.45),
+      new THREE.MeshBasicMaterial({ map: stencilTexture(code), transparent: true }));
+    st.rotation.x = -Math.PI / 2;
+    st.position.set((b.x0 + b.x1) / 2, b.h + 0.02, (b.z0 + b.z1) / 2);
+    mapGroup.add(st);
+  }
   // Pilar relay tengah (menara kecil menyala).
   const tower = box(0.5, 6, 0.5, new THREE.MeshBasicMaterial({ color: 0xffd21a }));
   tower.position.set(0, 3, 0);
@@ -247,7 +276,8 @@ function buildMap() {
 // --- Voxel bot: kepala besar (target headshot), visor, garis punggung menyala ---
 function buildBotMesh(team) {
   const g = new THREE.Group();
-  const bodyC = team === 'you' ? 0x3fa9f5 : 0xff5a1a;
+  // Biru teman diperdalam (0x2b8fd9) supaya tetap terbaca di palet siang cerah.
+  const bodyC = team === 'you' ? 0x2b8fd9 : 0xff5a1a;
   const headC = team === 'you' ? 0xf5f5f0 : 0xff8a1e;
   const body = box(0.72, 0.85, 0.4, mat(bodyC)); body.position.y = 0.95; g.add(body);
   const head = box(0.44, 0.4, 0.44, mat(headC)); head.position.y = 1.58; g.add(head);
@@ -256,9 +286,12 @@ function buildBotMesh(team) {
   line.position.set(0, 0.95, 0.23); g.add(line);
   const legL = box(0.2, 0.5, 0.24, mat(0x141c33)); legL.position.set(-0.18, 0.25, 0); g.add(legL);
   const legR = box(0.2, 0.5, 0.24, mat(0x141c33)); legR.position.set(0.18, 0.25, 0); g.add(legR);
+  // Lengan memegang senjata ke depan; mengayun kecil saat bergerak.
+  const armR = box(0.13, 0.5, 0.13, mat(bodyC)); armR.position.set(0.3, 1.15, -0.15); armR.rotation.x = -0.9; g.add(armR);
+  const armL = box(0.13, 0.5, 0.13, mat(bodyC)); armL.position.set(-0.28, 1.15, -0.15); armL.rotation.x = -0.9; g.add(armL);
   const gun = box(0.08, 0.12, 0.7, mat(0x222222)); gun.position.set(0.3, 1.15, -0.3); g.add(gun);
   g.traverse((o) => { if (o.isMesh) o.castShadow = true; }); // bot melempar bayangan
-  g.userData = { legL, legR, head, body, headMat: head.material };
+  g.userData = { legL, legR, armL, armR, head, body, headMat: head.material, bodyMat: body.material };
   scene.add(g);
   return g;
 }
@@ -278,11 +311,18 @@ function buildViewmodel() {
     lens: new THREE.Mesh(new THREE.PlaneGeometry(0.05, 0.05),
       new THREE.MeshLambertMaterial({ color: 0x9fd8ff, transparent: true, opacity: 0.25 })),
     reticle: box(0.014, 0.014, 0.004, new THREE.MeshBasicMaterial({ color: 0xffd21a })),
+    // Stripe aksen warna per senjata (di sisi body, warna diganti per senjata).
+    stripe: box(0.115, 0.02, 0.3, new THREE.MeshBasicMaterial({ color: 0xffd21a })),
+    // Bilah pisau taktis (slot 3): hanya terlihat saat slot melee.
+    blade: box(0.02, 0.3, 0.07, mat(0xcfd8e8)),
     // Tangan voxel + lengan bawah: parent ke grup viewmodel yang sama, jadi
     // ikut recoil kick, walk bob, dan reload dip. Tangan di bawah garis bidik.
+    // Sarung tangan taktis: gelap + aksen knuckle.
     handR: box(0.09, 0.09, 0.13, mat(0x1f2a3a)),
+    knuckR: box(0.095, 0.02, 0.06, mat(0x0a0a0a)),
     foreR: box(0.09, 0.09, 0.34, mat(0x2e6db4)),
     handL: box(0.09, 0.09, 0.12, mat(0x1f2a3a)),
+    knuckL: box(0.095, 0.02, 0.06, mat(0x0a0a0a)),
     foreL: box(0.09, 0.09, 0.32, mat(0x2e6db4)),
   };
   viewmodelParts.body.position.set(0.28, -0.26, -0.55);
@@ -292,19 +332,50 @@ function buildViewmodel() {
   viewmodelParts.scope.position.set(0.28, -0.15, -0.6);
   viewmodelParts.lens.position.set(0.28, -0.15, -0.712);
   viewmodelParts.reticle.position.set(0.28, -0.15, -0.718);
+  viewmodelParts.stripe.position.set(0.28, -0.2, -0.55);
+  viewmodelParts.blade.position.set(0.28, -0.3, -0.7);
+  viewmodelParts.blade.rotation.x = 0.3;
+  viewmodelParts.blade.visible = false;
   viewmodelParts.handR.position.set(0.28, -0.37, -0.4);
+  viewmodelParts.knuckR.position.set(0.28, -0.32, -0.4);
   viewmodelParts.foreR.position.set(0.3, -0.47, -0.18);
   viewmodelParts.foreR.rotation.x = 0.45;
   viewmodelParts.handL.position.set(0.28, -0.33, -0.72);
+  viewmodelParts.knuckL.position.set(0.28, -0.28, -0.72);
   viewmodelParts.foreL.position.set(0.22, -0.44, -0.55);
   viewmodelParts.foreL.rotation.x = 0.4;
   for (const k in viewmodelParts) viewmodel.add(viewmodelParts[k]);
-  // Muzzle flash: sprite kuning 1 frame.
-  muzzle = new THREE.Mesh(new THREE.PlaneGeometry(0.3, 0.3),
-    new THREE.MeshBasicMaterial({ color: 0xffe27a, transparent: true, opacity: 0, side: THREE.DoubleSide }));
+  // Muzzle flash: sprite starburst kuning 1 frame (additive).
+  muzzle = new THREE.Mesh(new THREE.PlaneGeometry(0.45, 0.45),
+    new THREE.MeshBasicMaterial({ map: starburstTexture(), transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending }));
   muzzle.position.set(0.28, -0.24, -1.2);
   viewmodel.add(muzzle);
 }
+
+// Muzzle flash starburst: 8 ujung + inti putih pijar (bukan kotak polos).
+function starburstTexture() {
+  const cv = document.createElement('canvas'); cv.width = 128; cv.height = 128;
+  const c = cv.getContext('2d');
+  const g = c.createRadialGradient(64, 64, 2, 64, 64, 60);
+  g.addColorStop(0, 'rgba(255,255,240,1)');
+  g.addColorStop(0.3, 'rgba(255,220,120,0.9)');
+  g.addColorStop(1, 'rgba(255,180,60,0)');
+  c.fillStyle = g; c.fillRect(0, 0, 128, 128);
+  c.fillStyle = 'rgba(255,240,200,0.95)';
+  for (let i = 0; i < 4; i++) {
+    c.save(); c.translate(64, 64); c.rotate((i * Math.PI) / 4);
+    c.beginPath(); c.moveTo(-3, 0); c.lineTo(3, 0); c.lineTo(0, -62); c.closePath(); c.fill();
+    c.beginPath(); c.moveTo(-3, 0); c.lineTo(3, 0); c.lineTo(0, 62); c.closePath(); c.fill();
+    c.restore();
+  }
+  return new THREE.CanvasTexture(cv);
+}
+
+// Warna stripe aksen per senjata.
+const STRIPE_C = {
+  percik: 0x9aa0aa, petir9: 0xffd21a, jarum: 0x3fa9f5,
+  sengat9: 0xff8a1e, busur: 0xff3b30, senja12: 0x7be495,
+};
 
 function buildPools() {
   // Tracer: 24 garis tipis (putih kawan, oranye musuh).
@@ -401,10 +472,14 @@ export function render(s, dt, time) {
     const u = g.userData;
     const swing = b.moving ? Math.sin(time * 9 + i) * 0.45 : 0;
     u.legL.rotation.x = swing; u.legR.rotation.x = -swing;
+    u.armL.rotation.x = -0.9 + swing * 0.5;
+    u.armR.rotation.x = -0.9 - swing * 0.5;
     u.body.scale.y = b.crouch ? 0.75 : 1;
     u.head.position.y = b.crouch ? 1.25 : 1.58;
     // Flash musuh: kepala putih berkedip saat ter-flash, kembali normal sesudahnya.
-    u.head.material = b.flashT > 0 ? mat(0xffffff) : u.headMat;
+    // Hit-flash: seluruh badan + kepala putih ~80 mdtk saat kena tembak.
+    u.head.material = (b.flashT > 0 || b.hitFlashT > 0) ? mat(0xffffff) : u.headMat;
+    u.body.material = b.hitFlashT > 0 ? mat(0xffffff) : u.bodyMat;
   }
 
   // Viewmodel: siluet per senjata + recoil + reload dip.
@@ -437,18 +512,35 @@ export function render(s, dt, time) {
 function updateViewmodel(s, dt, time) {
   if (!viewmodel) return;
   const w = curWeapon(s);
-  const id = w ? w.id : 'percik';
+  const melee = s.player.slot === 'melee';
+  const id = melee ? 'pisau' : (w ? w.id : 'percik');
   if (id !== lastWeaponId) {
     lastWeaponId = id;
     // Siluet berbeda per senjata: panjang laras & ukuran body.
-    const L = { percik: 0.25, petir9: 0.55, jarum: 0.7, sengat9: 0.4, busur: 0.85, senja12: 0.5 }[id] || 0.5;
-    const Wd = { percik: 0.07, petir9: 0.1, jarum: 0.09, sengat9: 0.12, busur: 0.08, senja12: 0.14 }[id] || 0.1;
-    viewmodelParts.barrel.scale.z = L / 0.4;
-    viewmodelParts.body.scale.x = Wd / 0.1;
-    viewmodelParts.scope.visible = id === 'busur' || id === 'jarum';
+    // Melee: senjata api sembunyi, bilah pisau tampil, tangan kanan ke gagang.
+    const isMelee = id === 'pisau';
+    viewmodelParts.body.visible = !isMelee;
+    viewmodelParts.barrel.visible = !isMelee;
+    viewmodelParts.grip.visible = !isMelee;
+    viewmodelParts.accent.visible = !isMelee && id !== 'percik';
+    viewmodelParts.scope.visible = !isMelee && (id === 'busur' || id === 'jarum');
     viewmodelParts.lens.visible = viewmodelParts.scope.visible;
     viewmodelParts.reticle.visible = viewmodelParts.scope.visible;
-    viewmodelParts.accent.visible = id !== 'percik';
+    viewmodelParts.stripe.visible = !isMelee;
+    viewmodelParts.blade.visible = isMelee;
+    viewmodelParts.handL.visible = !isMelee;
+    viewmodelParts.knuckL.visible = !isMelee;
+    viewmodelParts.foreL.visible = !isMelee;
+    viewmodelParts.handR.position.z = isMelee ? -0.62 : -0.4;
+    viewmodelParts.knuckR.position.z = isMelee ? -0.62 : -0.4;
+    viewmodelParts.foreR.position.z = isMelee ? -0.42 : -0.18;
+    if (!isMelee) {
+      const L = { percik: 0.25, petir9: 0.55, jarum: 0.7, sengat9: 0.4, busur: 0.85, senja12: 0.5 }[id] || 0.5;
+      const Wd = { percik: 0.07, petir9: 0.1, jarum: 0.09, sengat9: 0.12, busur: 0.08, senja12: 0.14 }[id] || 0.1;
+      viewmodelParts.barrel.scale.z = L / 0.4;
+      viewmodelParts.body.scale.x = Wd / 0.1;
+      viewmodelParts.stripe.material.color.setHex(STRIPE_C[id] || 0xffd21a);
+    }
   }
   const p = s.player;
   // Zoom sniper 4x: viewmodel (termasuk tangan) sembunyi di balik scope overlay HUD.
@@ -460,6 +552,12 @@ function updateViewmodel(s, dt, time) {
   viewmodel.position.y = (reloading ? -0.22 : 0) + bob;
   viewmodel.position.z = kick + (reloading ? 0.1 : 0);
   viewmodel.rotation.x = kick * 1.5 + (reloading ? 0.5 : 0);
+  // Ayunan pisau: putar viewmodel 0,3 dtk setelah ayun.
+  if (melee) {
+    const k = Math.max(0, 0.3 - (s.time - (p.meleeLast || -9))) / 0.3;
+    viewmodel.rotation.z = -k * 0.9;
+    viewmodel.rotation.x = -k * 0.4;
+  } else viewmodel.rotation.z = 0;
   // ADS: viewmodel ke tengah (semua bagian, termasuk tangan & lensa, ikut).
   const adsK = p.ads ? 1 : 0;
   viewmodelParts.body.position.x += ((p.ads ? 0 : 0.28) - viewmodelParts.body.position.x) * Math.min(1, dt * 12);
@@ -469,9 +567,13 @@ function updateViewmodel(s, dt, time) {
   viewmodelParts.scope.position.x = viewmodelParts.body.position.x;
   viewmodelParts.lens.position.x = viewmodelParts.body.position.x;
   viewmodelParts.reticle.position.x = viewmodelParts.body.position.x;
+  viewmodelParts.stripe.position.x = viewmodelParts.body.position.x;
+  viewmodelParts.blade.position.x = viewmodelParts.body.position.x;
   viewmodelParts.handR.position.x = viewmodelParts.body.position.x;
+  viewmodelParts.knuckR.position.x = viewmodelParts.body.position.x;
   viewmodelParts.foreR.position.x = viewmodelParts.body.position.x + 0.02;
   viewmodelParts.handL.position.x = viewmodelParts.body.position.x;
+  viewmodelParts.knuckL.position.x = viewmodelParts.body.position.x;
   viewmodelParts.foreL.position.x = viewmodelParts.body.position.x - 0.06;
   // Muzzle flash memudar.
   if (muzzle) muzzle.material.opacity = Math.max(0, muzzle.material.opacity - dt * 12);
@@ -483,9 +585,11 @@ function updateSmokes(s, dt) {
     for (let k = 0; k < 6 && si < smokes.length; k++, si++) {
       const sp = smokes[si];
       const a = (k / 6) * Math.PI * 2 + sm.t;
-      sp.sp.scale.setScalar(2 + sm.t * 0.4);
-      sp.sp.position.set(sm.x + Math.cos(a) * 1.6, 0.6 + Math.sin(sm.t * 0.7 + k) * 0.5, sm.z + Math.sin(a) * 1.6);
-      sp.sp.material.opacity = Math.min(0.75, sm.t * 2) * (1 - sm.t / sm.dur);
+      // Awan 3D berlapis: 3 lapis (bawah/tengah/atas), ukuran + opacity beda.
+      const layer = k % 3;
+      sp.sp.scale.setScalar(2 + layer * 0.9 + sm.t * 0.4);
+      sp.sp.position.set(sm.x + Math.cos(a) * 1.6, 0.6 + layer * 0.7 + Math.sin(sm.t * 0.7 + k) * 0.5, sm.z + Math.sin(a) * 1.6);
+      sp.sp.material.opacity = (0.35 + layer * 0.15) * Math.min(1, sm.t * 2) * (1 - sm.t / sm.dur);
     }
   }
   for (; si < smokes.length; si++) smokes[si].sp.material.opacity = 0;
@@ -501,7 +605,7 @@ export function consumeRenderEvent(s, ev) {
       pos[3] = ev.x1; pos[4] = ev.y1; pos[5] = ev.z1;
       t.line.geometry.attributes.position.needsUpdate = true;
       t.line.material.color.setHex(ev.foe ? 0xff8a1e : 0xfff6c9);
-      t.line.material.opacity = 0.9;
+      t.line.material.opacity = 1; // inti tracer terang penuh
       t.t = 0.12;
       break;
     }

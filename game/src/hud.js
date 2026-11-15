@@ -2,7 +2,7 @@
 // HUD: panel HTML di atas canvas. String & DOM hanya diperbarui bila nilainya
 // berubah (cache last-*). Minimap 160px + compass strip. Buy menu, menu utama
 // (poster penjelas), overlay akhir ronde & akhir match.
-import { CFG, TEAM_SHORT, SITE_NAMES } from './config.js';
+import { CFG, SITE_NAMES } from './config.js';
 import { shopItems } from './economy.js';
 import { curWeapon } from './state.js';
 import { BOXES, SITES } from './map.js';
@@ -23,6 +23,9 @@ function fmtTime(t) {
 
 let mm = null, mmCtx = null;
 let callbacks = {};
+let guideOn = false;
+export function toggleGuide() { guideOn = !guideOn; show('guide', guideOn); }
+export function hideGuide() { guideOn = false; show('guide', false); }
 
 export function initHUD(s, cb) {
   callbacks = cb;
@@ -39,6 +42,10 @@ export function initHUD(s, cb) {
   if (close) close.addEventListener('click', () => { show('buymenu', false); });
   const mute = $('muteBtn');
   if (mute) mute.addEventListener('click', () => { cb.onMute && cb.onMute(); });
+  const guideBtn = $('guideBtn');
+  if (guideBtn) guideBtn.addEventListener('click', () => toggleGuide());
+  const guideClose = $('guideCloseBtn');
+  if (guideClose) guideClose.addEventListener('click', () => hideGuide());
   const vol = $('volSlider');
   if (vol) vol.addEventListener('input', () => { cb.onVolume && cb.onVolume(vol.value / 100); });
   document.querySelectorAll('[data-diff]').forEach((b) => {
@@ -72,32 +79,55 @@ export function updateHUD(s, dt) {
   const inGame = s.phase !== 'menu' && s.phase !== 'matchend';
   show('hud', inGame);
   show('menu', s.phase === 'menu');
+  show('aiPilot', s.phase === 'menu');
   show('matchend', s.phase === 'matchend');
   show('roundend', s.phase === 'end');
   if (s.phase === 'menu') { updateMenu(s); return; }
   if (s.phase === 'matchend') { updateMatchEnd(s); return; }
 
-  // --- Kiri bawah: HP / armor / uang ---
+  // --- Kiri bawah: faksi & peran + HP besar + bar hijau + armor + bar biru + kit ---
+  setText('faction', s.playerSide === 'atk' ? 'PEMUTUS SIRKUIT · PENYERANG' : 'PENJAGA ARUS · BERTAHAN');
   setText('hp', String(Math.max(0, Math.round(p.hp))));
   $('hp').style.color = p.hp < 20 ? '#FF3B30' : p.hp < 40 ? '#FF8A1E' : '#F5F5F0';
   $('hpbar').style.width = Math.max(0, p.hp) + '%';
   setText('armor', p.armor > 0 ? '🛡 ' + Math.round(p.armor) + (p.helm ? ' +HELM' : '') : '—');
+  $('armorBar').style.width = Math.min(100, Math.round(p.armor)) + '%';
   setText('money', '$' + p.money);
+  show('kitBadge', p.hasKit);
 
-  // --- Kanan bawah: senjata & ammo ---
-  setText('wname', w ? CFG.WEAPONS[w.id].name : '—');
-  setText('ammoMag', w ? String(w.mag) : '—');
-  setText('ammoRes', w ? (w.reserve === -1 ? '∞' : String(w.reserve)) : '');
-  $('ammoMag').style.color = w && w.mag === 0 ? '#FF3B30' : '#F5F5F0';
-  setText('reloadHint', w && w.reloading > 0 ? 'RELOADING…' : (w && w.mag === 0 ? 'R — RELOAD' : ''));
-  setText('slot1', p.primary ? CFG.WEAPONS[p.primary.id].name : '—');
-  setText('slot2', 'PERCIK');
-  setText('slot3', `◉ ×${p.grenades.smoke} KABUT · ✦ ×${p.grenades.flash} SENTAK`);
-  $('slot1').classList.toggle('on', p.slot === 'primary');
-  $('slot2').classList.toggle('on', p.slot === 'secondary');
+  // --- Kanan bawah: jenis & nama senjata + amunisi besar + bar slot bernomor ---
+  if (p.slot === 'melee') {
+    setText('wname', 'PISAU TAKTIS');
+    setText('ammoMag', '—');
+    setText('ammoRes', '');
+    $('ammoMag').style.color = '#F5F5F0';
+    setText('reloadHint', 'KLIK — AYUN');
+  } else {
+    setText('wname', w ? CFG.WEAPONS[w.id].name : '—');
+    setText('ammoMag', w ? String(w.mag) : '—');
+    setText('ammoRes', w ? (w.reserve === -1 ? '∞' : String(w.reserve)) : '');
+    $('ammoMag').style.color = w && w.mag === 0 ? '#FF3B30' : '#F5F5F0';
+    setText('reloadHint', w && w.reloading > 0 ? 'RELOADING…' : (w && w.mag === 0 ? 'R — RELOAD' : ''));
+  }
+  const sbKey = p.slot + '|' + (p.primary ? p.primary.id : '-') + '|' + p.grenades.smoke + '|' + p.grenades.flash;
+  if (last.slotBar !== sbKey) {
+    last.slotBar = sbKey;
+    const el = $('slotBar');
+    if (el) {
+      const nm = (on, txt) => `<b class="${on ? 'on' : ''}">${txt}</b>`;
+      el.innerHTML =
+        nm(p.slot === 'primary', '[1] ' + (p.primary ? CFG.WEAPONS[p.primary.id].name : '—')) + ' · ' +
+        nm(p.slot === 'secondary', '[2] PERCIK') + ' · ' +
+        nm(p.slot === 'melee', '[3] PISAU') + ' · ' +
+        nm(false, '[4] SMOKE ×' + p.grenades.smoke) + ' · ' +
+        nm(false, '[5] FLASH ×' + p.grenades.flash);
+    }
+  }
   if (p.hasBomb) setText('bombTag', '● BOM — PLANT DI SITE'); else setText('bombTag', '');
 
-  // --- Atas tengah: timer / fase / skor ---
+  // --- Atas tengah: nama tim + kotak hidup 4v4 + skor + timer + status bom ---
+  setText('teamsLine', `PEMUTUS SIRKUIT ${alivePips(s, 'atk')} · ${alivePips(s, 'def')} PENJAGA ARUS`);
+  setText('bombStatus', bombStatusText(s));
   const bomb = s.bomb;
   if (bomb.state === 'planted') {
     setText('timer', fmtTime(bomb.timer));
@@ -109,15 +139,24 @@ export function updateHUD(s, dt) {
     const ph = { buy: 'BUY PHASE', freeze: 'FREEZE — SIAP', live: s.playerSide === 'atk' ? 'PLANT BOM DI SITE' : 'JAGA SITE', end: 'RONDE SELESAI', intermission: 'GANTI SISI' }[s.phase] || '';
     setText('phase', `RONDE ${s.round} — ${ph}`);
   }
-  setText('scoreYou', `${TEAM_SHORT[s.playerSide === 'atk' ? 'def' : 'atk']} ${s.scoreFoe} — ${s.scoreYou} ${TEAM_SHORT[s.playerSide === 'atk' ? 'atk' : 'def']}`);
-  setText('scoreLine', `KAMU (${s.playerSide === 'atk' ? 'PENYERANG' : 'DEFENDER'}) · FIRST TO 7 · RONDE ${s.round}/12${s.ot ? ' · OT' + s.ot : ''}`);
+  setText('scoreLine', `SKOR ${s.scoreYou} — ${s.scoreFoe} · RONDE ${s.round}/12${s.ot ? ' · OT' + s.ot : ''} · KAMU (${s.playerSide === 'atk' ? 'PENYERANG' : 'DEFENDER'}) · FIRST TO 7`);
 
   // --- Kill feed & daftar tim ---
   const kf = $('killfeed');
   if (kf && last.kf !== s.killfeed.length + (s.killfeed[0] ? s.killfeed[0].t : 0)) {
     last.kf = s.killfeed.length + (s.killfeed[0] ? s.killfeed[0].t : 0);
     kf.innerHTML = s.killfeed.map((k) =>
-      `<div><b class="atk">${k.a}</b> [${CFG.WEAPONS[k.w] ? CFG.WEAPONS[k.w].name : k.w}] <b class="def">${k.b}</b>${k.head ? ' <i>HEADSHOT</i>' : ''}</div>`).join('');
+      `<div><b class="atk">${k.a}</b> [${CFG.WEAPONS[k.w] ? CFG.WEAPONS[k.w].name : (k.w === 'pisau' ? 'PISAU' : k.w)}] <b class="def">${k.b}</b>${k.head ? ' <i>HEADSHOT</i>' : ''}</div>`).join('');
+  }
+  // --- Radio taktis bot (maks 3 baris, kedaluwarsa 5 dtk) ---
+  const rd = $('radio');
+  if (rd) {
+    const lines = s.log.filter((e) => s.time - e.t >= 0 && s.time - e.t < 5).slice(-3);
+    const key = lines.map((e) => e.t + e.txt).join('|');
+    if (last.radio !== key) {
+      last.radio = key;
+      rd.innerHTML = lines.map((e) => `<div>📻 ${e.txt}</div>`).join('');
+    }
   }
   setText('teamYou', 'ARUS · ' + teamAlive(s, 'you'));
   setText('teamFoe', 'PEMUTUS · ' + teamAlive(s, 'foe'));
@@ -165,9 +204,10 @@ export function updateHUD(s, dt) {
     if (b) setText('specText', `MENONTON ${b.name} · HP ${Math.round(b.hp)} · ${CFG.WEAPONS[b.weapon.id].name} · Q ganti · RONDE BERLANJUT`);
   }
 
-  // --- Minimap & compass ---
+  // --- Minimap & compass & label lokasi ---
   drawMinimap(s);
   updateCompass(s);
+  setText('locLabel', '▸ ' + locName(s.player.x, s.player.z));
 
   // --- Round-end overlay ---
   if (s.phase === 'end') {
@@ -186,6 +226,34 @@ function teamAlive(s, team) {
   let n = team === 'you' && s.player.alive ? 1 : 0;
   for (const b of s.bots) if (b.team === team && b.alive) n++;
   return n + ' HIDUP';
+}
+
+// Kotak pemain hidup 4v4: ■ hidup, □ mati (untuk satu sisi atk/def).
+function alivePips(s, side) {
+  const team = (s.playerSide === 'atk') === (side === 'atk') ? 'you' : 'foe';
+  let n = 0;
+  if (team === 'you' && s.player.alive) n++;
+  for (const b of s.bots) if (b.team === team && b.alive) n++;
+  return '■'.repeat(n) + '□'.repeat(4 - n);
+}
+
+// Status bom di tengah atas: CORE ARMED (dibawa) / PLANTED + timer / DEFUSED.
+function bombStatusText(s) {
+  const b = s.bomb;
+  if (b.state === 'planted') return `◉ PLANTED — ${SITE_NAMES[b.site]} ${fmtTime(b.timer)}`;
+  if (b.state === 'defused') return '○ DEFUSED';
+  if (s.phase === 'live') return '● CORE ARMED — PLANT DI SITE';
+  return '';
+}
+
+// Nama lokasi aktif pemain (di bawah minimap).
+function locName(x, z) {
+  if (Math.hypot(x + 20, z + 14) <= 5) return 'RELAY UTARA — SITE A';
+  if (Math.hypot(x - 20, z + 14) <= 5) return 'GARDU KACA — SITE B';
+  if (z >= -2 && z <= 2) return 'KORIDOR VOLT';
+  if (z < -9) return 'TERAS PANEL';
+  if (z > 9) return 'LORONG KABEL';
+  return 'SIRKUIT KACA';
 }
 
 function updatePrompt(s) {
@@ -248,8 +316,14 @@ function drawMinimap(s) {
       c.fillStyle = '#FF3B30'; c.beginPath(); c.arc(X(b.x), Z(b.z), 3, 0, 7); c.fill();
     }
   }
-  // Pemain: panah putih.
+  // View cone pemain (kerucut pandang 75°, jangkauan ~40 m) — kuning transparan.
   const p = s.player;
+  c.fillStyle = 'rgba(255,210,26,0.14)';
+  c.beginPath();
+  c.moveTo(X(p.x), Z(p.z));
+  c.arc(X(p.x), Z(p.z), 100, -p.yaw - Math.PI / 2 - 0.65, -p.yaw - Math.PI / 2 + 0.65);
+  c.closePath(); c.fill();
+  // Pemain: panah putih.
   c.save(); c.translate(X(p.x), Z(p.z)); c.rotate(-p.yaw);
   c.fillStyle = '#F5F5F0';
   c.beginPath(); c.moveTo(0, -6); c.lineTo(4, 5); c.lineTo(-4, 5); c.closePath(); c.fill();

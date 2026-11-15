@@ -61,6 +61,8 @@ export const CFG = {
     },
   },
   ARMOR: { kevlar: 650, kevlarHelm: 1000, kit: 400, bodyRed: 0.35, headRed: 0.40 },
+  // Pisau taktis (slot 3, tombol 3): ayunan jarak dekat, tanpa amunisi.
+  MELEE: { range: 2.2, dmg: 40, cd: 0.35 },
   GRENADES: {
     smoke: { price: 300, dur: 18, radius: 3.2 },
     flash: { price: 300, dur: 2.5, recover: 1.5, range: 25, cone: 120 },

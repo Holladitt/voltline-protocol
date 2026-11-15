@@ -4,7 +4,7 @@
 // Kepala = kotak lebih kecil di atas badan; semua rentang Y absolut.
 import { CFG } from './config.js';
 import { rayWalls, hasLOS } from './map.js';
-import { emit } from './state.js';
+import { emit, radio } from './state.js';
 
 // Kotak hit bot (y absolut): badan 0..h-0.34, kepala h-0.34..h. Jongkok h=1.15.
 function botBoxes(b, body, head) {
@@ -73,6 +73,8 @@ export function calcDamage(w, dist, head, target) {
 export function applyDamage(s, victim, dmg, attacker, head, weaponId) {
   if (!victim.alive) return false;
   victim.hp -= dmg;
+  // Hit-flash putih ~80 mdtk pada bot yang kena tembak (bukan pemain).
+  if (victim.team) victim.hitFlashT = 0.08;
   const died = victim.hp <= 0;
   if (died) {
     victim.hp = 0; victim.alive = false; victim.deaths++;
@@ -90,6 +92,10 @@ export function applyDamage(s, victim, dmg, attacker, head, weaponId) {
     s.killfeed.unshift({ a: aName, b: vName, w: weaponId, head, t: s.time });
     if (s.killfeed.length > 4) s.killfeed.pop();
     emit(s, 'kill', { attacker: aName, victim: vName, head, weapon: weaponId });
+    // Radio taktis: bot melaporkan kill (throttle global di radio()).
+    if (attacker && attacker !== s.player && attacker.name) {
+      radio(s, `${attacker.name}: MUSUH TUMBANG — ${vName}`);
+    }
     if (victim === s.player) emit(s, 'playerDead', {});
   }
   return died;

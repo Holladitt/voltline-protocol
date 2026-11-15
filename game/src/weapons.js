@@ -4,6 +4,7 @@
 // Spread: diam < jalan (2.5-4x) < crouch -20-30%; 0.25 dtk settle setelah berhenti.
 import { CFG } from './config.js';
 import { rayShoot, calcDamage, applyDamage } from './combat.js';
+import { hasLOS } from './map.js';
 import { curWeapon, emit, newWeaponState } from './state.js';
 
 const D2R = Math.PI / 180;
@@ -176,4 +177,32 @@ export function giveWeapon(s, id) {
 export function giveBotWeapon(b, id) {
   b.weapon = newWeaponState(id);
   b.weaponId = id;
+}
+
+// Pisau taktis (slot 3): ayunan jarak dekat, damage 40, cooldown 0,35 dtk.
+// Kena bila musuh dalam 2,2 m di depan (kerucut ±26°) + garis pandang bersih.
+export function swingMelee(s, now) {
+  const p = s.player;
+  if (now - (p.meleeLast || -9) < CFG.MELEE.cd) return 'no';
+  p.meleeLast = now;
+  emit(s, 'swing', { own: true });
+  const eyeY = p.y + (p.crouch ? CFG.PLAYER.eyeCrouch : CFG.PLAYER.eye);
+  let best = null, bd = 1e9;
+  for (const b of s.bots) {
+    if (b.team !== 'foe' || !b.alive) continue;
+    const d = Math.hypot(b.x - p.x, b.z - p.z);
+    if (d > CFG.MELEE.range) continue;
+    const ang = Math.atan2(-(b.x - p.x), -(b.z - p.z)) - p.yaw;
+    const a = Math.atan2(Math.sin(ang), Math.cos(ang));
+    if (Math.abs(a) > 0.45) continue;
+    if (!hasLOS(p.x, eyeY, p.z, b.x, eyeY, b.z)) continue;
+    if (d < bd) { bd = d; best = b; }
+  }
+  if (!best) return 'swing';
+  const died = applyDamage(s, best, CFG.MELEE.dmg, p, false, 'pisau');
+  p.dmg += CFG.MELEE.dmg;
+  p.hitmarkT = 0.25; p.hitmarkHead = false; p.hitmarkKill = died;
+  emit(s, 'hit', { x: best.x, y: eyeY, z: best.z, head: false, dmg: CFG.MELEE.dmg, killed: died });
+  emit(s, 'hitmark', { head: false, kill: died });
+  return died ? 'kill' : 'hit';
 }

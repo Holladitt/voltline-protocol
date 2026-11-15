@@ -32,7 +32,7 @@ export function newBot(def, i) {
     weapon: newWeaponState('percik'), weaponId: 'percik',
     target: -1, targetIsPlayer: false, seenT: 0, seenX: 0, seenZ: 0, reactT: 0, burstLeft: 0, burstPause: 0,
     hearX: 0, hearZ: 0, hearT: 0, hearConf: 0,
-    plantT: 0, defuseT: 0, flashT: 0, smokeT: 0,
+    plantT: 0, defuseT: 0, flashT: 0, smokeT: 0, hitFlashT: 0,
     kills: 0, deaths: 0, dmg: 0, money: 800, hasKit: false,
     grenades: { smoke: 0, flash: 0 }, usedSmoke: false, usedFlash: false,
     stepT: 0, shotT: 0, aimErr: 0, lastPosX: 0, lastPosZ: 0,
@@ -56,6 +56,7 @@ export function createState() {
       primary: null, secondary: newWeaponState('percik'), slot: 'secondary',
       grenades: { smoke: 0, flash: 0 },
       flashT: 0, flashFull: 0, shake: 0, stepT: 0, ads: false, adsT: 0,
+      meleeLast: -9,
       spreadBloom: 0, settleT: 0, hitmarkT: 0, hitmarkHead: false, hitmarkKill: false,
       dmgDir: 0, dmgDirT: 0, lastHitBy: -1, plantT: 0, defuseT: 0,
       moveMag: 0, airT: 0,
@@ -90,7 +91,7 @@ export function resetMatch(s, diff) {
 export function resetRound(s) {
   s.bomb = { state: 'carried', site: -1, x: 0, z: 0, timer: 0, carrier: -1, progress: 0, planter: -1, defuser: -1, beepT: 0 };
   s.smokes.length = 0; s.flashes.length = 0; s.nades.length = 0;
-  s.killfeed.length = 0; s.events.length = 0;
+  s.killfeed.length = 0; s.events.length = 0; s.log.length = 0; // log = feed radio taktis
   s.roundStats = { kills: 0, dmg: 0, money: 0 };
   s.mapLit = false; s.endReason = ''; s.endDetail = '';
   s._fakeDone = false;  const p = s.player;
@@ -105,7 +106,7 @@ export function resetRound(s) {
   for (const b of s.bots) {
     b.hp = 100; b.alive = true; b.crouch = false; b.state = 'buy';
     b.target = -1; b.seenT = 0; b.reactT = 0; b.burstLeft = 0; b.burstPause = 0;
-    b.plantT = 0; b.defuseT = 0; b.flashT = 0; b.smokeT = 0;
+    b.plantT = 0; b.defuseT = 0; b.flashT = 0; b.smokeT = 0; b.hitFlashT = 0;
     b.grenades = { smoke: 0, flash: 0 }; b.usedSmoke = false; b.usedFlash = false;
     b.weapon.reloading = 0; b.weapon.reloadT = 0; b.weapon.spreadBloom = 0;
     b.vis = false; b.hearT = 0; b._phits = 0; b.holdUntil = undefined; b._site = undefined;
@@ -114,9 +115,20 @@ export function resetRound(s) {
 
 export function curWeapon(s) {
   const p = s.player;
+  if (p.slot === 'melee') return null; // pisau bukan senjata api
   return p.slot === 'primary' ? p.primary : p.secondary;
 }
 
 export function emit(s, type, data) {
   s.events.push({ type, ...data });
+}
+
+// Radio taktis bot: baris singkat di HUD kanan atas. Throttle global 3 dtk
+// supaya tidak spam — KECUALI event penting (plant/defuse) yang selalu lolos.
+// Feed dibatasi 4 baris, kedaluwarsa 5 dtk di HUD.
+export function radio(s, txt, important = false) {
+  if (!important && s.time - (s._radioT || -9) < 3) return;
+  s._radioT = s.time;
+  s.log.push({ t: s.time, txt });
+  if (s.log.length > 4) s.log.shift();
 }

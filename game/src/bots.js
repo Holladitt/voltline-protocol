@@ -9,7 +9,7 @@ import { CFG } from './config.js';
 import { nearestWP, findRoute, WP, hasLOS, collides, inSite, siteOf, distToSite } from './map.js';
 import { fireBot, startReloadBot, tickReload, giveBotWeapon } from './weapons.js';
 import { throwGrenade, segmentInSmoke } from './grenades.js';
-import { emit } from './state.js';
+import { emit, radio } from './state.js';
 
 const _route = []; // scratch rute waypoint
 const ROLES = ['entry', 'support', 'lurker', 'anchor', 'flex'];
@@ -166,6 +166,7 @@ export function tickBot(s, b, dt) {
   const d = CFG.DIFF[s.diff];
   const isAtkTeam = (s.playerSide === 'atk') === (b.team === 'you');
   if (b.flashT > 0) b.flashT -= dt;
+  if (b.hitFlashT > 0) b.hitFlashT -= dt;
   if (b.smokeT > 0) b.smokeT -= dt;
   tickReload(b.weapon, dt);
 
@@ -295,9 +296,11 @@ export function tickBot(s, b, dt) {
     const site = siteOf(b.x, b.z);
     if (isAtkTeam && site >= 0 && s.bomb.state === 'carried' && s.bomb.carrier === b.id) {
       b.state = 'plant'; b.plantT = 0;
+      radio(s, `${b.name}: SITE ${'AB'[site]} CLEAR — PLANT`);
       emit(s, 'botPlanting', { id: b.id, site });
     } else if (!isAtkTeam && s.bomb.state === 'planted' && site === s.bomb.site) {
       b.state = 'defuse'; b.defuseT = 0;
+      radio(s, `${b.name}: DEFUSE — COVER ME`);
       emit(s, 'botDefusing', { id: b.id });
     }
   }
@@ -344,6 +347,7 @@ function decideMove(s, b, isAtkTeam) {
     let target = site;
     if (s.time > 20 && !s._fakeDone && (b.role === 'lurker' || b.role === 'flex')) {
       target = 1 - site; s._fakeDone = true;
+      radio(s, `${b.name}: ROTASI KE ${target === 0 ? 'A' : 'B'}`);
     }
     if (b.role === 'anchor') { const hs = holdSpot(b, site); setRouteTo(s, b, hs[0], hs[1]); }
     else if (b.role === 'lurker') { setRouteTo(s, b, site === 0 ? -26 : 26, 14); } // lorong kabel
