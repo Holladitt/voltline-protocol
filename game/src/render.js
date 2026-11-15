@@ -69,15 +69,6 @@ function stencilTexture(code) {
   STENCIL_TEX[code] = t;
   return t;
 }
-function softTexture() {
-  const cv = document.createElement('canvas'); cv.width = 64; cv.height = 64;
-  const c = cv.getContext('2d');
-  const g = c.createRadialGradient(32, 32, 4, 32, 32, 30);
-  g.addColorStop(0, 'rgba(255,255,255,0.85)');
-  g.addColorStop(1, 'rgba(255,255,255,0)');
-  c.fillStyle = g; c.fillRect(0, 0, 64, 64);
-  return new THREE.CanvasTexture(cv);
-}
 
 // Skybox: bright golden-hour daytime gradient (bright blue -> warm yellow) + sun.
 function skyTexture() {
@@ -398,11 +389,12 @@ function buildPools() {
     scene.add(line);
     tracers.push({ line, t: 0 });
   }
-  // Smoke: 48 soft sprites.
-  const tex = softTexture();
+  // Smoke: 48 soft spheres — round from every angle (a sprite reads as a
+  // flat blue rectangle when it fills the camera).
+  const sg = new THREE.SphereGeometry(1, 10, 8);
   for (let i = 0; i < 48; i++) {
-    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, color: 0xcfd8e8, transparent: true, opacity: 0, depthWrite: false }));
-    sp.scale.set(3, 3, 1);
+    const sp = new THREE.Mesh(sg, new THREE.MeshBasicMaterial({ color: 0xcfd8e8, transparent: true, opacity: 0, depthWrite: false }));
+    sp.scale.set(3, 3, 3);
     scene.add(sp);
     smokes.push({ sp, t: 0, life: 0, x: 0, y: 0, z: 0, seed: Math.random() * 10 });
   }
@@ -529,7 +521,9 @@ export function render(s, dt, time) {
 
 function updateViewmodel(s, dt, time) {
   if (!viewmodel) return;
-  const w = curWeapon(s);
+  // Menu (AI pilot demo): the viewmodel follows the pilot bot's weapon.
+  const pilot = s.phase === 'menu' ? s.bots[s._pilotId] : null;
+  const w = pilot && pilot.alive ? pilot.weapon : curWeapon(s);
   const melee = s.player.slot === 'melee';
   const id = melee ? 'knife' : (w ? w.id : 'percik');
   if (id !== lastWeaponId) {
@@ -562,8 +556,8 @@ function updateViewmodel(s, dt, time) {
   }
   const p = s.player;
   // Sniper 4x zoom: viewmodel (hands included) hides behind the HUD scope overlay.
-  // Menu phase: hidden too — otherwise the player's pistol floats in the air during the demo.
-  viewmodel.visible = s.phase !== 'menu' && !(p.ads && w && CFG.WEAPONS[w.id].scope === 4);
+  // Menu: shown from the pilot's POV; hidden only with no living pilot (orbit cam).
+  viewmodel.visible = (s.phase !== 'menu' || (pilot && pilot.alive)) && !(p.ads && w && CFG.WEAPONS[w.id].scope === 4);
   // Recoil kick + reload dip + walk bob.
   const kick = w ? (w.spreadBloom || 0) * 0.06 : 0;
   const reloading = w && w.reloading > 0;
@@ -608,7 +602,9 @@ function updateSmokes(s, dt) {
       const layer = k % 3;
       sp.sp.scale.setScalar(2 + layer * 0.9 + sm.t * 0.4);
       sp.sp.position.set(sm.x + Math.cos(a) * 1.6, 0.6 + layer * 0.7 + Math.sin(sm.t * 0.7 + k) * 0.5, sm.z + Math.sin(a) * 1.6);
-      sp.sp.material.opacity = (0.35 + layer * 0.15) * Math.min(1, sm.t * 2) * (1 - sm.t / sm.dur);
+      // Fade out when a puff gets too close to the camera (no flat wash).
+      const d = sp.sp.position.distanceTo(camera.position);
+      sp.sp.material.opacity = (0.35 + layer * 0.15) * Math.min(1, sm.t * 2) * (1 - sm.t / sm.dur) * Math.min(1, Math.max(0, (d - 1) / 2));
     }
   }
   for (; si < smokes.length; si++) smokes[si].sp.material.opacity = 0;
